@@ -33,7 +33,7 @@ Each team works on one protein. Everyone runs the same steps. The differences in
 
 ```bash
 # On AWS instance
-git clone https://github.com/YOUR_USERNAME/protein-design-workshop.git
+git clone https://github.com/mclear73/protein-design-workshop.git
 cd protein-design-workshop
 chmod +x setup.sh
 ./setup.sh
