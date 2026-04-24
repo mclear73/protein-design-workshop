@@ -1,0 +1,46 @@
+# Workshop runtime outputs (regenerated on each run)
+outputs/
+inputs/
+
+# Downloaded weights and parameters (pulled fresh by setup.sh — ~5GB)
+*.pt
+params/
+RFdiffusion/
+models/
+
+# PDB structures downloaded at runtime
+*.pdb
+!examples/*.pdb
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Conda
+.conda/
+
+# OS
+.DS_Store
+Thumbs.db
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Secrets — DO NOT commit
+*.pem
+*.key
+.env
+.aws/
