@@ -23,13 +23,14 @@
 # =============================================================================
 
 set -e
+set -o pipefail
 
 # ---- Defaults (override via env vars) ---------------------------------------
 INSTANCE_ID="${WORKSHOP_INSTANCE_ID:-i-REPLACE_ME}"
 KEY_PATH="${WORKSHOP_KEY_PATH:-$HOME/.ssh/your-key.pem}"
 REGION="${AWS_REGION:-us-east-1}"
 SSH_USER="${SSH_USER:-ubuntu}"
-JUPYTER_LOCAL_PORT=8888
+JUPYTER_LOCAL_PORT="${JUPYTER_LOCAL_PORT:-8888}"
 
 # ---- Helpers ----------------------------------------------------------------
 
@@ -44,22 +45,23 @@ COMMANDS
   resize <instance-type>  Change instance type (auto-stops if running)
                           Cheap:  t3.medium (\$0.04/hr, CPU only)
                                   t3.small  (\$0.02/hr, CPU only)
-                          GPU:    g5.xlarge (\$1.00/hr, A10G 24GB)
+                          GPU:    g5.xlarge (\$1.01/hr, A10G 24GB)
                                   g4dn.xlarge (\$0.53/hr, T4 16GB)
   ssh                     SSH in (picks up current public IP)
-  tunnel                  SSH tunnel for JupyterLab (local port 8888)
+  tunnel                  SSH tunnel for JupyterLab (local port \$JUPYTER_LOCAL_PORT)
   ip                      Print the current public IP
   elastic-ip              Allocate + attach a stable IP (one-time, ~free)
   ami-snapshot            Create an AMI snapshot (for long-term cold storage)
 
 CONFIG
-  INSTANCE_ID = $INSTANCE_ID
-  KEY_PATH    = $KEY_PATH
-  REGION      = $REGION
-  SSH_USER    = $SSH_USER
+  INSTANCE_ID         = $INSTANCE_ID
+  KEY_PATH            = $KEY_PATH
+  REGION              = $REGION
+  SSH_USER            = $SSH_USER
+  JUPYTER_LOCAL_PORT  = $JUPYTER_LOCAL_PORT
 
 Override via environment variables WORKSHOP_INSTANCE_ID, WORKSHOP_KEY_PATH,
-AWS_REGION, or edit the top of this script.
+AWS_REGION, JUPYTER_LOCAL_PORT, or edit the top of this script.
 EOF
 }
 
@@ -70,30 +72,52 @@ check_config() {
         echo "   or edit the default in this script."
         exit 1
     fi
+    # Only require KEY_PATH for commands that actually use SSH.
+    # The caller passes "ssh" if it needs the key check.
+    if [ "${1:-}" = "ssh" ] && [ ! -f "$KEY_PATH" ]; then
+        echo "❌ Key file not found: $KEY_PATH"
+        echo "   Run: export WORKSHOP_KEY_PATH=\$HOME/.ssh/your-actual-key.pem"
+        echo "   or edit the default in this script."
+        exit 1
+    fi
 }
 
+# Run an AWS query and surface real errors instead of silently masking them.
+# Without this, expired creds / wrong region / wrong instance ID get
+# misdiagnosed downstream as "instance is stopped."
 ec2_query() {
-    aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
-        --query "$1" --output text 2>/dev/null
+    local result
+    if ! result=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$REGION" \
+        --query "$1" --output text 2>&1); then
+        echo "❌ AWS query failed: $result" >&2
+        echo "   Check:" >&2
+        echo "     • AWS credentials:  aws sts get-caller-identity" >&2
+        echo "     • INSTANCE_ID:      $INSTANCE_ID" >&2
+        echo "     • REGION:           $REGION" >&2
+        exit 1
+    fi
+    echo "$result"
 }
 
 get_state() { ec2_query 'Reservations[0].Instances[0].State.Name'; }
 get_type()  { ec2_query 'Reservations[0].Instances[0].InstanceType'; }
 get_ip()    { ec2_query 'Reservations[0].Instances[0].PublicIpAddress'; }
 
-# Rough on-demand hourly rates for common instance types (us-east-1, USD)
+# Rough on-demand hourly rates for common instance types (us-east-1, USD).
+# Rates last verified: 2026-04. Refresh periodically:
+#   https://aws.amazon.com/ec2/pricing/on-demand/
 hourly_rate() {
     case "$1" in
-        g5.xlarge)    echo "1.006" ;;
-        g5.2xlarge)   echo "1.212" ;;
-        g4dn.xlarge)  echo "0.526" ;;
-        g4dn.2xlarge) echo "0.752" ;;
-        t3.medium)    echo "0.042" ;;
-        t3.small)     echo "0.021" ;;
-        t3.micro)     echo "0.010" ;;
-        m5.large)     echo "0.096" ;;
-        c5.large)     echo "0.085" ;;
-        *)            echo "?" ;;
+        g5.xlarge)    echo "1.01"  ;;
+        g5.2xlarge)   echo "1.21"  ;;
+        g4dn.xlarge)  echo "0.53"  ;;
+        g4dn.2xlarge) echo "0.75"  ;;
+        t3.medium)    echo "0.04"  ;;
+        t3.small)     echo "0.02"  ;;
+        t3.micro)     echo "0.01"  ;;
+        m5.large)     echo "0.10"  ;;
+        c5.large)     echo "0.09"  ;;
+        *)            echo "?"     ;;
     esac
 }
 
@@ -120,6 +144,8 @@ cmd_status() {
         else
             printf "Cost      \$0/hr compute while %s (+ EBS storage only)\n" "$state"
         fi
+    else
+        printf "Cost      (rate not in table for %s — check AWS pricing page)\n" "$type"
     fi
 }
 
@@ -142,7 +168,7 @@ cmd_start() {
     echo ""
     echo "Next:"
     echo "  $0 ssh        # to start Jupyter on the instance"
-    echo "  $0 tunnel     # (in a second terminal) to forward port 8888"
+    echo "  $0 tunnel     # (in a second terminal) to forward port $JUPYTER_LOCAL_PORT"
 }
 
 cmd_stop() {
@@ -162,14 +188,19 @@ cmd_stop() {
 
 cmd_resize() {
     check_config
-    local new_type="$1"
+    local new_type="${1:-}"
     if [ -z "$new_type" ]; then
         echo "❌ Usage: $0 resize <instance-type>"
         echo "   Common choices:"
-        echo "     g5.xlarge    GPU, workshop use      (\$1.00/hr)"
+        echo "     g5.xlarge    GPU, workshop use      (\$1.01/hr)"
         echo "     t3.medium    CPU, cheap admin work  (\$0.04/hr)"
         exit 1
     fi
+
+    # Normalize to lowercase — AWS instance types are case-sensitive and
+    # always lowercase, so reject "G5.xLarge" early instead of round-tripping
+    # to the API for a confusing error.
+    new_type=$(echo "$new_type" | tr '[:upper:]' '[:lower:]')
 
     # Architecture safety check — avoid bricking the EBS env
     case "$new_type" in
@@ -179,6 +210,19 @@ cmd_resize() {
             exit 1
             ;;
     esac
+
+    # Typo / unknown-type check. Allow override but require explicit confirmation
+    # so a fat-fingered "g5.xlrage" doesn't slip through.
+    if [ "$(hourly_rate "$new_type")" = "?" ]; then
+        echo "⚠️  Unknown instance type: $new_type"
+        echo "   This may be a valid type that's just not in our cost table,"
+        echo "   or it may be a typo."
+        read -r -p "   Continue anyway? [y/N] " confirm
+        case "$confirm" in
+            y|Y|yes|YES) ;;
+            *) echo "Aborted."; exit 1 ;;
+        esac
+    fi
 
     local state
     state=$(get_state)
@@ -204,7 +248,7 @@ cmd_resize() {
 }
 
 cmd_ssh() {
-    check_config
+    check_config ssh
     local ip
     ip=$(get_ip)
     if [ -z "$ip" ] || [ "$ip" = "None" ]; then
@@ -217,7 +261,7 @@ cmd_ssh() {
 }
 
 cmd_tunnel() {
-    check_config
+    check_config ssh
     local ip
     ip=$(get_ip)
     if [ -z "$ip" ] || [ "$ip" = "None" ]; then
@@ -225,8 +269,15 @@ cmd_tunnel() {
         exit 1
     fi
     echo "Tunnel: localhost:${JUPYTER_LOCAL_PORT} → ${ip}:8888"
-    echo "Paste your Jupyter URL (from the instance's jupyter lab terminal) in your browser."
-    echo "Ctrl-C to close."
+    echo ""
+    echo "Once connected, find your Jupyter URL with one of:"
+    echo "  jupyter server list           # if Jupyter is already running"
+    echo "  cat ~/jupyter.log             # if you started it via start_jupyter.sh"
+    echo "  Or look at the terminal where you ran 'jupyter lab'"
+    echo ""
+    echo "Then paste the URL (with token) into your browser."
+    echo "Ctrl-C to close the tunnel."
+    echo ""
     exec ssh -L "${JUPYTER_LOCAL_PORT}:localhost:8888" -i "$KEY_PATH" "$SSH_USER@$ip"
 }
 
@@ -237,6 +288,20 @@ cmd_ip() {
 
 cmd_elastic_ip() {
     check_config
+    # Don't double-allocate — check for an existing EIP first.
+    local existing
+    existing=$(aws ec2 describe-addresses --region "$REGION" \
+        --filters "Name=instance-id,Values=$INSTANCE_ID" \
+        --query 'Addresses[0].PublicIp' --output text 2>/dev/null || echo "")
+    if [ -n "$existing" ] && [ "$existing" != "None" ]; then
+        echo "⚠️  Instance already has Elastic IP $existing attached."
+        echo "    Inspect with:"
+        echo "      aws ec2 describe-addresses --filters Name=instance-id,Values=$INSTANCE_ID \\"
+        echo "        --region $REGION"
+        echo "    Release the existing one before allocating a new one."
+        exit 1
+    fi
+
     echo "Allocating Elastic IP in $REGION..."
     local alloc_id
     alloc_id=$(aws ec2 allocate-address --region "$REGION" --query 'AllocationId' --output text)
@@ -273,11 +338,24 @@ cmd_ami_snapshot() {
     ami_id=$(aws ec2 create-image --instance-id "$INSTANCE_ID" --region "$REGION" \
         --name "$tag" --description "Workshop instance snapshot $tag" \
         --query 'ImageId' --output text)
-    echo "✅ AMI: $ami_id"
-    echo "   Use this to recreate the instance from scratch later."
-    echo "   Cost: ~\$0.08/GB-month for the underlying snapshot (~\$8/mo for 100GB)."
-    echo "   Once snapshotted, you can safely terminate the instance + delete the EBS volume"
-    echo "   to stop paying for it, and recreate later from the AMI."
+    echo "   AMI ID: $ami_id (state: pending)"
+    echo ""
+    echo "Waiting for AMI to become available — this typically takes 5–15 min."
+    echo "   ⚠️  Do NOT terminate the source instance until the AMI is 'available',"
+    echo "      or the snapshot may fail and you'll lose the backup."
+    echo ""
+
+    if aws ec2 wait image-available --image-ids "$ami_id" --region "$REGION"; then
+        echo "✅ AMI ready: $ami_id"
+        echo "   Cost: ~\$0.05/GB-month for the underlying snapshot (~\$5/mo for 100GB)."
+        echo "   Once snapshotted, you can safely terminate the instance + delete the EBS"
+        echo "   volume to stop paying for it, and recreate later from the AMI."
+    else
+        echo "❌ AMI wait failed — check status manually:"
+        echo "   aws ec2 describe-images --image-ids $ami_id --region $REGION \\"
+        echo "     --query 'Images[0].State' --output text"
+        exit 1
+    fi
 }
 
 # ---- Dispatch ---------------------------------------------------------------
@@ -286,7 +364,7 @@ case "${1:-}" in
     status)        cmd_status ;;
     start)         cmd_start ;;
     stop)          cmd_stop ;;
-    resize)        cmd_resize "$2" ;;
+    resize)        cmd_resize "${2:-}" ;;
     ssh)           cmd_ssh ;;
     tunnel)        cmd_tunnel ;;
     ip)            cmd_ip ;;
