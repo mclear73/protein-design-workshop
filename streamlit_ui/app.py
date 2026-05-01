@@ -209,11 +209,18 @@ def validate_with_af2(input_pdb: str, designs: list[dict], chain: str, team: str
     """Run AlphaFold2 on each designed sequence. Adds plddt/rmsd/ptm + saves PDBs."""
     from colabdesign.af import mk_af_model
 
-    af = mk_af_model(protocol="fixbb", use_templates=False, num_recycles=3)
-    # Force the model count via the opt dict — predict() doesn't reliably
-    # forward num_models to run(), so we set it where _get_model_nums reads
-    # from. 1 is sufficient for self-consistency checking.
-    af.opt["num_models"] = 1
+    # ColabDesign looks for AF2 params under <data_dir>/params/params_model_*.npz.
+    # Our setup.sh extracts the tarball to ~/params/params/ — passing data_dir=~/params/
+    # makes that resolve. Without this, ColabDesign tries the working directory
+    # and silently fails to load any model params, which makes predict() assert
+    # with "ERROR: no model params defined".
+    af = mk_af_model(
+        protocol="fixbb",
+        use_templates=False,
+        num_recycles=3,
+        data_dir=os.path.expanduser("~/params"),
+    )
+    af.opt["num_models"] = 1   # use just one of the five released AF2 models
     Path("outputs").mkdir(exist_ok=True)
 
     validated = []
