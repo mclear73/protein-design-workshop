@@ -12,12 +12,24 @@
 
 set -e
 
-# Activate the conda env that has ColabDesign + RFdiffusion installed
+# Activate the conda env that has ColabDesign + RFdiffusion installed.
+# Try the same locations setup.sh checks, in the same order.
 if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
     source /opt/conda/etc/profile.d/conda.sh
 elif [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
     source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+else
+    echo "❌ Conda not found. Run ./setup.sh first." >&2
+    exit 1
 fi
+
+if ! conda env list | grep -qE "^SE3nv\s"; then
+    echo "❌ Conda env 'SE3nv' does not exist. Run ./setup.sh first." >&2
+    exit 1
+fi
+
 conda activate SE3nv
 
 cd "$(dirname "$0")"

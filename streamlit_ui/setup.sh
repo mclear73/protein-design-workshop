@@ -54,6 +54,28 @@ locate_conda() {
 }
 
 # -----------------------------------------------------------------------------
+# Initialize conda for the user's interactive shell
+# -----------------------------------------------------------------------------
+# Without this, a user opening a fresh SSH session and typing `conda activate
+# SE3nv` gets "CommandNotFoundError: Your shell has not been properly
+# configured to use 'conda activate'." because conda only configures the shell
+# of the script that sources conda.sh.
+#
+# `conda init bash` writes a self-contained block to ~/.bashrc that auto-loads
+# conda on every new login shell. It's idempotent — re-running is safe and
+# only modifies the file the first time.
+# -----------------------------------------------------------------------------
+init_conda_for_user_shell() {
+    if grep -q "# >>> conda initialize >>>" "$HOME/.bashrc" 2>/dev/null; then
+        echo "✅ Conda already initialized in ~/.bashrc"
+    else
+        echo "--- Initializing conda for future shells ---"
+        "$CONDA_ROOT/bin/conda" init bash
+        echo "✅ ~/.bashrc updated. New shells will auto-load conda."
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Sanity check — verifies an install is healthy. Used by --check and at end.
 # -----------------------------------------------------------------------------
 run_sanity_check() {
@@ -153,6 +175,7 @@ echo "  ColabDesign:        $COLABDESIGN_VERSION"
 echo ""
 
 locate_conda
+init_conda_for_user_shell
 
 # -----------------------------------------------------------------------------
 # Fix the DLAMI's broken channel configuration
@@ -386,6 +409,10 @@ echo "=============================================="
 echo "  Install complete."
 echo "  Log saved to: $LOG_FILE"
 echo "=============================================="
+echo ""
+echo "  ⚠️  If you stay in this same shell, conda activate may not work yet."
+echo "      For a fresh SSH session it will work automatically."
+echo "      To use it in THIS shell now, run:  source ~/.bashrc"
 echo ""
 echo "Next steps:"
 echo ""
