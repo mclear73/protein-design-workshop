@@ -291,6 +291,61 @@ if ! python -c "import rfdiffusion" 2>/dev/null; then
 fi
 
 # -----------------------------------------------------------------------------
+# Compatibility fixes for the SE3nv env on Ubuntu 20.04 / Python 3.9
+# -----------------------------------------------------------------------------
+# These three pins resolve real issues we hit on a fresh DLAMI install. Each
+# step is idempotent — re-running setup is safe.
+#
+# 1. CUDA-enabled PyTorch
+#    The SE3nv.yml from RFdiffusion resolves to a CPU-only torch 1.9.1 under
+#    our channel config, which makes `torch.cuda.is_available()` return False
+#    and silently sends RFdiffusion/AF2 to the CPU (where they're ~100x slower
+#    or OOM). We force the +cu111 build of the same version.
+#
+# 2. Pin dm-haiku to 0.0.12
+#    Newer dm-haiku (0.0.13+) uses PEP 604 type-hint syntax (`X | None`) which
+#    requires Python 3.10+. Our env is Python 3.9 (because RFdiffusion pins it).
+#    0.0.12 is the last version that's 3.9-compatible.
+#
+# 3. Pin Pillow to <11
+#    Pillow 11+ links against a newer libstdc++ than Ubuntu 20.04 ships
+#    (needs GLIBCXX_3.4.29). Pillow 10.x is fine and is the version
+#    ColabDesign expects anyway.
+# -----------------------------------------------------------------------------
+echo ""
+echo "--- Applying compatibility fixes ---"
+
+# Fix 1: ensure torch has CUDA support
+if python -c "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
+    echo "  ✅ PyTorch CUDA support present"
+else
+    echo "  ⏳ PyTorch is CPU-only — installing CUDA-enabled build..."
+    pip install --quiet torch==1.9.1+cu111 \
+        -f https://download.pytorch.org/whl/torch_stable.html
+    echo "  ✅ PyTorch +cu111 installed"
+fi
+
+# Fix 2: pin dm-haiku to a Python-3.9-compatible release
+HAIKU_VER=$(python -c "import haiku; print(haiku.__version__)" 2>/dev/null || echo "missing")
+if [ "$HAIKU_VER" = "0.0.12" ]; then
+    echo "  ✅ dm-haiku already at 0.0.12"
+else
+    echo "  ⏳ Pinning dm-haiku to 0.0.12 (was: $HAIKU_VER)..."
+    pip install --quiet "dm-haiku==0.0.12"
+    echo "  ✅ dm-haiku 0.0.12 installed"
+fi
+
+# Fix 3: pin Pillow to <11
+PIL_MAJOR=$(python -c "import PIL; print(PIL.__version__.split('.')[0])" 2>/dev/null || echo "0")
+if [ "$PIL_MAJOR" -lt 11 ] 2>/dev/null; then
+    echo "  ✅ Pillow already pinned (version $PIL_MAJOR.x)"
+else
+    echo "  ⏳ Downgrading Pillow (was: $PIL_MAJOR.x)..."
+    pip install --quiet "pillow<11"
+    echo "  ✅ Pillow <11 installed"
+fi
+
+# -----------------------------------------------------------------------------
 # Download RFdiffusion model weights (~2 GB total)
 # Uses HTTPS, validates file sizes, retries on failure.
 # -----------------------------------------------------------------------------
