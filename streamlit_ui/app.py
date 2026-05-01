@@ -210,6 +210,10 @@ def validate_with_af2(input_pdb: str, designs: list[dict], chain: str, team: str
     from colabdesign.af import mk_af_model
 
     af = mk_af_model(protocol="fixbb", use_templates=False, num_recycles=3)
+    # Force the model count via the opt dict — predict() doesn't reliably
+    # forward num_models to run(), so we set it where _get_model_nums reads
+    # from. 1 is sufficient for self-consistency checking.
+    af.opt["num_models"] = 1
     Path("outputs").mkdir(exist_ok=True)
 
     validated = []
@@ -217,11 +221,7 @@ def validate_with_af2(input_pdb: str, designs: list[dict], chain: str, team: str
     for i, d in enumerate(designs):
         af.prep_inputs(pdb_filename=input_pdb, chain=chain)
         af.set_seq(seq=d["sequence"])
-        # num_models=1 picks one of AF2's five released models. Without this,
-        # ColabDesign's model_nums list is empty and predict() asserts.
-        # 1 is sufficient for self-consistency checks; bump to 3 or 5 for
-        # higher-confidence validation at proportional cost.
-        af.predict(num_recycles=3, num_models=1, verbose=False)
+        af.predict(num_recycles=3, verbose=False)
 
         d["plddt"] = float(af.aux["log"]["plddt"])
         d["rmsd"]  = float(af.aux["log"].get("rmsd", -1))
