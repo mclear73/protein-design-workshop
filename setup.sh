@@ -15,9 +15,13 @@
 #               ColabDesign's single-sequence default).
 #
 # A note on dependencies:
-# - This env runs jax 0.6+, which broke ColabDesign v1.1.3 (deprecated
-#   jax.tree_map). Master has the fix. So we install ColabDesign from git's
-#   main branch, NOT a pinned release.
+# - jax is pinned to 0.4.24 because dm-haiku (a transitive dependency via
+#   alphafold via ColabFold) imports jax.linear_util at module load. That
+#   submodule was removed in jax 0.4.25, so newer jax versions crash
+#   ColabFold's MSA-aware AF2 pipeline. See ColabFold issue #579.
+# - ColabDesign is installed from git's main branch rather than the pinned
+#   v1.1.3 release because v1.1.3 uses the deprecated jax.tree_map API.
+#   Master has been updated to use jax.tree.map (the modern equivalent).
 # - Streamlit + py3Dmol are pip-installed alongside, so the UI can drive
 #   ColabFold directly without env switching.
 #
@@ -64,9 +68,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -----------------------------------------------------------------------------
 # Pinned versions (update these after testing a new combination end-to-end)
 # -----------------------------------------------------------------------------
-# ColabDesign master is required because pinned releases (v1.1.3 and earlier)
-# use deprecated jax.tree_map which jax 0.6+ removed. If a future release
-# stabilizes, pin to a release tag here.
+# ColabDesign master is required because the pinned v1.1.3 release uses the
+# deprecated jax.tree_map API, which was removed in favor of jax.tree.map.
+# Master has the fix. If a future release stabilizes, pin to a release tag.
 COLABDESIGN_VERSION="main"
 COLABFOLD_PIN="1.5.5"          # last tested version
 
@@ -103,10 +107,14 @@ import sys, os, shutil, subprocess
 ok = True
 
 try:
-    import torch
-    print(f"  ✅ torch {torch.__version__}, CUDA: {torch.cuda.is_available()}")
+    import jax
+    print(f"  ✅ jax {jax.__version__}")
+    # Verify the linear_util compat shim that dm-haiku needs
+    if not hasattr(jax, 'linear_util'):
+        print(f"  ❌ jax {jax.__version__} is missing linear_util — haiku will fail")
+        ok = False
 except Exception as e:
-    print(f"  ❌ torch: {e}"); ok = False
+    print(f"  ❌ jax: {e}"); ok = False
 
 try:
     import streamlit
@@ -287,7 +295,11 @@ dependencies:
   - pip
   - mmseqs2
   - pip:
-    - jax[cuda12]
+    # jax pinned to 0.4.24 — last version exposing jax.linear_util, which
+    # dm-haiku (an indirect dep of ColabFold via alphafold) requires at
+    # import time. jax 0.4.25 removed linear_util and breaks the import.
+    # See https://github.com/sokrypton/ColabFold/issues/579
+    - "jax[cuda12]==0.4.24"
     - tensorflow
     - "colabfold[alphafold] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
     - streamlit
@@ -306,8 +318,10 @@ echo "✅ Activated: $ENV_CFOLD"
 # -----------------------------------------------------------------------------
 # Install ColabDesign from MASTER into the colabfold env
 # -----------------------------------------------------------------------------
-# The pinned v1.1.3 release uses the deprecated jax.tree_map API, which jax
-# 0.6.x (installed by jax[cuda12] above) removed in favor of jax.tree.map.
+# The pinned v1.1.3 release uses the deprecated jax.tree_map API. Master
+# uses the modern jax.tree.map. We pin jax to 0.4.24 above for separate
+# reasons (linear_util compat with dm-haiku), but ColabDesign master works
+# fine with that jax version too.
 # Master has the fix. So this env needs ColabDesign from git's main branch,
 # not the same pin used in SE3nv.
 # -----------------------------------------------------------------------------
