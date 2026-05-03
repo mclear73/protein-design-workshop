@@ -295,13 +295,15 @@ dependencies:
   - pip
   - mmseqs2
   - pip:
-    # jax pinned to 0.4.24 — last version exposing jax.linear_util, which
-    # dm-haiku (an indirect dep of ColabFold via alphafold) requires at
-    # import time. jax 0.4.25 removed linear_util and breaks the import.
-    # See https://github.com/sokrypton/ColabFold/issues/579
+    # ColabFold uses [alphafold-minus-jax] (instead of [alphafold]) so its
+    # dependency resolver won't upgrade our pinned jax. Then we pin jax
+    # 0.4.24 separately. jax 0.4.25+ removed the public jax.linear_util
+    # submodule that dm-haiku imports at module load — newer jax breaks
+    # ColabFold's AF2 entirely. See ColabFold issue #579.
     - "jax[cuda12]==0.4.24"
+    - "jaxlib==0.4.24"
     - tensorflow
-    - "colabfold[alphafold] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
+    - "colabfold[alphafold-minus-jax] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
     - streamlit
     - py3Dmol
     - numpy
