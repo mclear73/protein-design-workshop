@@ -15,13 +15,16 @@
 #               ColabDesign's single-sequence default).
 #
 # A note on dependencies:
-# - jax is pinned to 0.4.24 because dm-haiku (a transitive dependency via
-#   alphafold via ColabFold) imports jax.linear_util at module load. That
-#   submodule was removed in jax 0.4.25, so newer jax versions crash
-#   ColabFold's MSA-aware AF2 pipeline. See ColabFold issue #579.
-# - ColabDesign is installed from git's main branch rather than the pinned
-#   v1.1.3 release because v1.1.3 uses the deprecated jax.tree_map API.
-#   Master has been updated to use jax.tree.map (the modern equivalent).
+# - ColabFold 1.6.1 (pinned via COLABFOLD_PIN) installs jax 0.6.2 and
+#   dm-haiku 0.0.16 via its own pyproject.toml. dm-haiku 0.0.16 has been
+#   updated to not depend on the deprecated jax.linear_util submodule, so
+#   this combination works. Earlier ColabFold versions (1.5.5 and below)
+#   shipped with older haiku that crashes on jax 0.4.25+; we used to pin
+#   jax to 0.4.24 to work around that, but bumping ColabFold to 1.6.1
+#   solved it properly.
+# - ColabDesign is pinned to a specific commit hash (COLABDESIGN_COMMIT)
+#   from a known-working environment. The project doesn't tag releases on
+#   master, so we capture a commit that we've validated end-to-end.
 # - Streamlit + py3Dmol are pip-installed alongside, so the UI can drive
 #   ColabFold directly without env switching.
 #
@@ -68,11 +71,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -----------------------------------------------------------------------------
 # Pinned versions (update these after testing a new combination end-to-end)
 # -----------------------------------------------------------------------------
-# ColabDesign master is required because the pinned v1.1.3 release uses the
-# deprecated jax.tree_map API, which was removed in favor of jax.tree.map.
-# Master has the fix. If a future release stabilizes, pin to a release tag.
-COLABDESIGN_VERSION="main"
-COLABFOLD_PIN="1.5.5"          # last tested version
+# These versions are pulled from a known-working environment captured via
+# `pip freeze` on 2026-05-03. Don't change them without re-running the full
+# end-to-end test (PETase 1-design validation through the Streamlit UI).
+COLABFOLD_PIN="1.6.1"
+
+# ColabDesign is pinned to a specific commit, not a tag, because the project
+# doesn't tag releases on its main branch. This commit is the one that was
+# in the working environment when the PETase test passed.
+COLABDESIGN_COMMIT="e31a56fe1d9b4de25c8697f3a28b75892941cc72"
 
 # Name of the conda environment this script manages
 ENV_CFOLD="colabfold"
@@ -109,12 +116,21 @@ ok = True
 try:
     import jax
     print(f"  ✅ jax {jax.__version__}")
-    # Verify the linear_util compat shim that dm-haiku needs
-    if not hasattr(jax, 'linear_util'):
-        print(f"  ❌ jax {jax.__version__} is missing linear_util — haiku will fail")
-        ok = False
 except Exception as e:
     print(f"  ❌ jax: {e}"); ok = False
+
+try:
+    import haiku
+    print(f"  ✅ dm-haiku {haiku.__version__}")
+except Exception as e:
+    print(f"  ❌ dm-haiku: {e}"); ok = False
+
+try:
+    # The actual end-to-end test that previous bugs broke
+    from colabfold.batch import run  # noqa
+    print("  ✅ colabfold.batch imports")
+except Exception as e:
+    print(f"  ❌ colabfold.batch: {e}"); ok = False
 
 try:
     import streamlit
@@ -211,7 +227,7 @@ echo "  Log: $LOG_FILE"
 echo "=============================================="
 echo ""
 echo "Pinned versions:"
-echo "  ColabDesign:  $COLABDESIGN_VERSION"
+echo "  ColabDesign:  $COLABDESIGN_COMMIT"
 echo "  ColabFold:    $COLABFOLD_PIN"
 echo ""
 
@@ -295,15 +311,14 @@ dependencies:
   - pip
   - mmseqs2
   - pip:
-    # ColabFold uses [alphafold-minus-jax] (instead of [alphafold]) so its
-    # dependency resolver won't upgrade our pinned jax. Then we pin jax
-    # 0.4.24 separately. jax 0.4.25+ removed the public jax.linear_util
-    # submodule that dm-haiku imports at module load — newer jax breaks
-    # ColabFold's AF2 entirely. See ColabFold issue #579.
-    - "jax[cuda12]==0.4.24"
-    - "jaxlib==0.4.24"
-    - tensorflow
-    - "colabfold[alphafold-minus-jax] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
+    # Letting ColabFold's own pyproject.toml drive jax/jaxlib/dm-haiku
+    # resolution. With colabfold 1.6.1, it picks jax==0.6.2 and
+    # dm-haiku==0.0.16, which work together. We tried pinning jax to older
+    # versions in earlier iterations of this script, but that fought
+    # ColabFold's resolver and produced inconsistent envs.
+    - "colabfold[alphafold] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
+    - "jax[cuda12]"
+    - tensorflow_cpu
     - streamlit
     - py3Dmol
     - numpy
@@ -318,19 +333,17 @@ conda activate "$ENV_CFOLD"
 echo "✅ Activated: $ENV_CFOLD"
 
 # -----------------------------------------------------------------------------
-# Install ColabDesign from MASTER into the colabfold env
+# Install ColabDesign at a specific commit
 # -----------------------------------------------------------------------------
-# The pinned v1.1.3 release uses the deprecated jax.tree_map API. Master
-# uses the modern jax.tree.map. We pin jax to 0.4.24 above for separate
-# reasons (linear_util compat with dm-haiku), but ColabDesign master works
-# fine with that jax version too.
-# Master has the fix. So this env needs ColabDesign from git's main branch,
-# not the same pin used in SE3nv.
+# ColabDesign isn't on PyPI and doesn't tag releases on master. We pin to a
+# specific commit hash (COLABDESIGN_COMMIT) captured from a known-working
+# environment. Don't change this pin without re-running the full end-to-end
+# workshop test.
 # -----------------------------------------------------------------------------
 if ! python -c "from colabdesign.mpnn import mk_mpnn_model" 2>/dev/null; then
     echo ""
-    echo "--- Installing ColabDesign ($COLABDESIGN_VERSION) into $ENV_CFOLD ---"
-    pip install --quiet "git+https://github.com/sokrypton/ColabDesign.git@$COLABDESIGN_VERSION"
+    echo "--- Installing ColabDesign (commit ${COLABDESIGN_COMMIT:0:8}) into $ENV_CFOLD ---"
+    pip install --quiet "git+https://github.com/sokrypton/ColabDesign.git@$COLABDESIGN_COMMIT"
 fi
 
 # -----------------------------------------------------------------------------
