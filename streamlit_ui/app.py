@@ -319,6 +319,68 @@ TARGETS = {
             "Carotenoids are a ~$1.8B global market."
         ),
     },
+    "GH29": {
+        "label":      "GH29 — α-L-fucosidase (AI-designed, SaBRe lane)",
+        "source":     "afdb",
+        "uniprot":    "Q9WYE2",   # TmαFuc, Thermotoga maritima, 449 aa
+        "chain":      "A",
+        "range":      None,
+        "organism":   "Thermotoga maritima (hyperthermophile)",
+        "function":   "α-L-fucosidase — hydrolyses terminal L-fucose",
+        "hotspots":   "",
+        # GH29 functional residues. Numbering is full-length TmαFuc UniProt
+        # Q9WYE2 (449 aa); the AF-Q9WYE2 PDB uses 1:1 numbering with no gaps,
+        # validated against the peptide context the doc cites:
+        # `222-WND·MGWPEKGKEDL-235` matches the PDB at those positions.
+        #
+        # GH29 uses a 2-residue retaining Koshland mechanism — NOT a triad.
+        # The doc cautions repeatedly: do not label this a "catalytic triad".
+        #
+        # SaBRe's GH-M14 variant (ProteinMPNN-redesigned, ΔTm > +20 °C,
+        # ~5× soluble yield over WT) is manuscript-in-preparation as of
+        # 2026-04. We ship the lane without GH-M14 mutations for v1; once
+        # SaBRe publishes the residue mask, add them with
+        # category="mpnn_redesigned". See data/gh29/variant_template.json
+        # in the original workplan for the intended schema.
+        # TODO(sabre-data): integrate GH-M14 mutation list when SaBRe
+        # releases the manuscript.
+        #
+        # Pocket residues from TfFuc1 (Cao 2024: H49/W61/E60/H108/H109/Y152)
+        # do NOT map 1:1 to TmαFuc — none of those 6 positions has the
+        # expected AA. Including them would mislabel structural alignment.
+        # Skipped from v1; would need structural superposition to identify
+        # the TmαFuc equivalents.
+        "functional_residues": [
+            # Catalytic dyad — Koshland double-displacement, retaining
+            {"position": 224, "expected_aa": "D", "label": "D224",
+             "category": "nucleophile",
+             "note": "Catalytic nucleophile — attacks the anomeric carbon "
+                     "to form a covalent glycosyl-enzyme intermediate. "
+                     "Family-conserved across all GH29 fucosidases. "
+                     "(Tarling et al. 2003 covalent-intermediate trapping; "
+                     "first established as nucleophile via 2-fluoro-fucoside "
+                     "inactivation in TmαFuc.)"},
+            {"position": 266, "expected_aa": "E", "label": "E266",
+             "category": "acid_base",
+             "note": "Catalytic acid/base — protonates the leaving-group "
+                     "oxygen, then deprotonates the incoming water. Glu in "
+                     "subfamily A (TmαFuc); subfamily B uses Asp at a "
+                     "different position. Expect noticeably lower MSA "
+                     "conservation than the nucleophile — that's the "
+                     "subfamily-A-vs-B split, not a bug."},
+        ],
+        "blurb": (
+            "**The 'AI-designed' case.** TmαFuc — a GH29 α-L-fucosidase "
+            "from *Thermotoga maritima* — used by the SaBRe project to "
+            "hydrolyse fucose from *Sargassum* fucoidan. The SaBRe team "
+            "applied **ProteinMPNN** (the same tool you'll use today) to "
+            "redesign non-catalytic positions, holding the catalytic dyad "
+            "(D224 / E266) fixed. Their best variant **GH-M14** gained "
+            "~20 °C in Tm and ~5× soluble expression over wild-type. "
+            "Look for the dyad in the conservation plot — the nucleophile "
+            "is invariant; the acid/base varies by subfamily."
+        ),
+    },
 }
 
 # =============================================================================
@@ -605,6 +667,11 @@ _CATEGORY_COLORS = {
     "psy_dxxxd_2": "#c0392b",   # dark red — second DXXXD (Mg²⁺ B)
     "psy_lid":     "#e67e22",   # orange — PSY active-site lid / pocket
     "cyclase":     "#9b59b6",   # purple — cyclase PXE(E/D) Glu
+    # GH29 fucosidase — Koshland retaining mechanism (2-residue dyad)
+    "nucleophile":      "#e74c3c",   # red — catalytic Asp (nucleophile)
+    "acid_base":        "#e67e22",   # orange — catalytic acid/base
+    "pocket":           "#f1c40f",   # yellow — substrate-binding pocket
+    "mpnn_redesigned":  "#16a085",   # teal — ProteinMPNN-redesigned position
 }
 _CATEGORY_LABELS = {
     "catalytic":   "Catalytic triad",
@@ -622,6 +689,10 @@ _CATEGORY_LABELS = {
     "psy_dxxxd_2": "PSY second DXXXD (Mg²⁺ B)",
     "psy_lid":     "PSY pocket / substrate aromatic",
     "cyclase":     "Cyclase PXE(E/D) Glu",
+    "nucleophile":     "Catalytic nucleophile (Asp)",
+    "acid_base":       "Catalytic acid/base",
+    "pocket":          "Substrate-binding pocket",
+    "mpnn_redesigned": "ProteinMPNN-redesigned position",
 }
 
 
@@ -1036,6 +1107,11 @@ _CATEGORY_EMOJI = {
     "psy_dxxxd_2": "🟤",
     "psy_lid":     "🟠",
     "cyclase":     "🟣",
+    # GH29 fucosidase categories
+    "nucleophile":     "🔴",
+    "acid_base":       "🟠",
+    "pocket":          "🟡",
+    "mpnn_redesigned": "🟢",
 }
 
 
@@ -1154,6 +1230,8 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
         "mada", "p_loop", "walker_b", "glpl", "rnbs", "mhd",
         # CarRP bifunctional cyclase + prenyltransferase (R domain → P domain)
         "cyclase", "psy_lid", "psy_dxxxd_1", "psy_dxxxd_2",
+        # GH29 fucosidase Koshland-retaining dyad + pocket
+        "nucleophile", "acid_base", "pocket", "mpnn_redesigned",
         # Engineering hot-spots (last, both teams)
         "hotspot",
     )
@@ -2212,8 +2290,12 @@ def main() -> None:
         - **PETase** usually clean (well-trained data)
         - **ZAR1** often variable (plant proteins under-represented)
         - **CarRP** typically most variable (fungal + AF-predicted starting structure)
+        - **GH29** clean fold (thermostable, well-represented family); compare
+          your designs against SaBRe's GH-M14 — did your sequence avoid the
+          catalytic dyad like ProteinMPNN's did?
 
-        That gradient — from biomedical-adjacent to truly industrial — is the lesson.
+        That gradient — from biomedical-adjacent to truly industrial to
+        AI-redesigned — is the lesson.
         """)
 
 
