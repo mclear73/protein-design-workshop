@@ -253,12 +253,65 @@ TARGETS = {
         "organism":   "Mucor circinelloides (fungus)",
         "function":   "Bifunctional lycopene cyclase + phytoene synthase",
         "hotspots":   "A45,A80,A150",
-        # CarRP has two catalytic domains. We mark a representative residue
-        # from each: the DXXXD motif in the phytoene synthase domain (~D420)
-        # and a conserved cyclase residue (~E118). These are approximations —
-        # if the MSA shows other positions as more conserved, update from data.
-        "catalytic_residues": "A118,A420,A424",
-        "catalytic_labels":   {"A118": "cyclase E", "A420": "PSY DXXXD", "A424": "PSY DXXXD"},
+        # Functional-residue annotations for the MSA inspector. Positions
+        # are full-length AtCarRP UniProt Q9UUQ6 numbering (614 aa), which
+        # the AF-Q9UUQ6 PDB uses 1:1 — chain A starts at resnum 1 with no
+        # gaps in resolution.
+        #
+        # CarRP is bifunctional: an N-terminal cyclase (R) domain plus a
+        # C-terminal phytoene synthase (P) domain. The two active sites
+        # have different conserved motifs — there is NO catalytic triad
+        # here, despite what the previous dashboard claimed. The previous
+        # annotations (V118 "cyclase E", D420/Y424 "PSY DXXXD") were wrong:
+        # V118 is V not E and only 15% conserved, D420 isn't the canonical
+        # first DXXXD (those are at 329/333), and Y424 is Y not D (it's a
+        # PROSITE PS01044 substrate-pocket aromatic).
+        #
+        # Categories follow carrp_functional_residues.md:
+        #   cyclase     — PXE(E/D) Glu in the cyclase R domain (E78)
+        #   psy_lid     — PSY active-site lid / substrate-pocket aromatics
+        #                 (Y145, Y424, N471)
+        #   psy_dxxxd_1 — first DXXXD Mg²⁺ binding motif (D329, D333)
+        #   psy_dxxxd_2 — second DXXXD Mg²⁺ binding motif (D475, D479)
+        "functional_residues": [
+            # Cyclase R-domain Glu — E78K reduces cyclase activity
+            # (DIWAV/Stephanopoulos report)
+            {"position": 78, "expected_aa": "E", "label": "E78",
+             "category": "cyclase",
+             "note": "Cyclase PXE(E/D) Glu — E78K reduces cyclase activity "
+                     "(DIWAV/Stephanopoulos report)"},
+            # PSY active-site lid / substrate-pocket aromatics
+            {"position": 145, "expected_aa": "Y", "label": "Y145",
+             "category": "psy_lid",
+             "note": "Top-conserved aromatic; likely PSY active-site lid / "
+                     "substrate channel — verify position on AF-Q9UUQ6"},
+            {"position": 424, "expected_aa": "Y", "label": "Y424",
+             "category": "psy_lid",
+             "note": "PSY substrate-pocket aromatic in PROSITE PS01044 "
+                     "signature region (424–433); NOT a DXXXD residue "
+                     "despite the previous dashboard label"},
+            {"position": 471, "expected_aa": "N", "label": "N471",
+             "category": "psy_lid",
+             "note": "N adjacent to second DXXXD — likely NSE-like lid "
+                     "contribution"},
+            # First DXXXD (Mg²⁺ A) — D329…D333, the textbook 4-residue
+            # spacing of class-I trans-IPPS prenyltransferases
+            {"position": 329, "expected_aa": "D", "label": "D329",
+             "category": "psy_dxxxd_1",
+             "note": "First DXXXD aspartate — coordinates catalytic Mg²⁺ A"},
+            {"position": 333, "expected_aa": "D", "label": "D333",
+             "category": "psy_dxxxd_1",
+             "note": "First DXXXD second aspartate — coordinates Mg²⁺ A"},
+            # Second DXXXD (Mg²⁺ B) — within PROSITE PS01045 signature
+            # region 463–489
+            {"position": 475, "expected_aa": "D", "label": "D475",
+             "category": "psy_dxxxd_2",
+             "note": "Second DXXXD aspartate — coordinates catalytic Mg²⁺ B "
+                     "(within PROSITE PS01045 region 463–489)"},
+            {"position": 479, "expected_aa": "D", "label": "D479",
+             "category": "psy_dxxxd_2",
+             "note": "Second DXXXD second aspartate — coordinates Mg²⁺ B"},
+        ],
         "blurb": (
             "**The 'real world' case.** Fungal bifunctional enzyme with no "
             "experimental structure — we use an AlphaFold Database prediction. "
@@ -535,31 +588,40 @@ _AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
 # against the blue conservation bars and the white plot background.
 _CATEGORY_COLORS = {
     # PETase α/β-hydrolase categories
-    "catalytic": "#e74c3c",   # red — the canonical triad
-    "oxyanion":  "#f39c12",   # orange — backbone-NH oxyanion hole
-    "wobble":    "#9b59b6",   # purple — wobbling Trp
-    "disulfide": "#f1c40f",   # yellow — disulfide cysteines
-    "hotspot":   "#3498db",   # blue — engineering-variant layer
+    "catalytic":   "#e74c3c",   # red — the canonical triad
+    "oxyanion":    "#f39c12",   # orange — backbone-NH oxyanion hole
+    "wobble":      "#9b59b6",   # purple — wobbling Trp
+    "disulfide":   "#f1c40f",   # yellow — disulfide cysteines
+    "hotspot":     "#3498db",   # blue — engineering-variant layer
     # ZAR1 NB-ARC / ATPase-switch categories
-    "p_loop":    "#e74c3c",   # red — P-loop / Walker A (ATP binding)
-    "walker_b":  "#e67e22",   # orange — Walker B / kinase-2 (Mg²⁺)
-    "glpl":      "#16a085",   # teal — GLPL motif (ARC1)
-    "rnbs":      "#3498db",   # blue — RNBS-B regulatory salt bridge
-    "mhd":       "#9b59b6",   # purple — MHD / IHD (the death switch)
-    "mada":      "#f1c40f",   # yellow — MADA α1 cell-death helix
+    "p_loop":      "#e74c3c",   # red — P-loop / Walker A (ATP binding)
+    "walker_b":    "#e67e22",   # orange — Walker B / kinase-2 (Mg²⁺)
+    "glpl":        "#16a085",   # teal — GLPL motif (ARC1)
+    "rnbs":        "#3498db",   # blue — RNBS-B regulatory salt bridge
+    "mhd":         "#9b59b6",   # purple — MHD / IHD (the death switch)
+    "mada":        "#f1c40f",   # yellow — MADA α1 cell-death helix
+    # CarRP bifunctional prenyltransferase / cyclase categories
+    "psy_dxxxd_1": "#e74c3c",   # red — first DXXXD (Mg²⁺ A)
+    "psy_dxxxd_2": "#c0392b",   # dark red — second DXXXD (Mg²⁺ B)
+    "psy_lid":     "#e67e22",   # orange — PSY active-site lid / pocket
+    "cyclase":     "#9b59b6",   # purple — cyclase PXE(E/D) Glu
 }
 _CATEGORY_LABELS = {
-    "catalytic": "Catalytic triad",
-    "oxyanion":  "Oxyanion hole",
-    "wobble":    "Wobbling Trp",
-    "disulfide": "Disulfide bond",
-    "hotspot":   "Engineering hot-spot",
-    "p_loop":    "P-loop / Walker A (ATP binding)",
-    "walker_b":  "Walker B / kinase-2 (Mg²⁺)",
-    "glpl":      "GLPL motif (ARC1)",
-    "rnbs":      "RNBS-B regulatory residue",
-    "mhd":       "MHD/IHD motif (autoinhibition)",
-    "mada":      "MADA α1 (membrane funnel)",
+    "catalytic":   "Catalytic triad",
+    "oxyanion":    "Oxyanion hole",
+    "wobble":      "Wobbling Trp",
+    "disulfide":   "Disulfide bond",
+    "hotspot":     "Engineering hot-spot",
+    "p_loop":      "P-loop / Walker A (ATP binding)",
+    "walker_b":    "Walker B / kinase-2 (Mg²⁺)",
+    "glpl":        "GLPL motif (ARC1)",
+    "rnbs":        "RNBS-B regulatory residue",
+    "mhd":         "MHD/IHD motif (autoinhibition)",
+    "mada":        "MADA α1 (membrane funnel)",
+    "psy_dxxxd_1": "PSY first DXXXD (Mg²⁺ A)",
+    "psy_dxxxd_2": "PSY second DXXXD (Mg²⁺ B)",
+    "psy_lid":     "PSY pocket / substrate aromatic",
+    "cyclase":     "Cyclase PXE(E/D) Glu",
 }
 
 
@@ -957,18 +1019,23 @@ def _resolve_functional_residues(team: str, input_pdb: str,
 # and the plot read as one coherent visual story without needing inline HTML.
 _CATEGORY_EMOJI = {
     # PETase categories
-    "catalytic": "🔴",
-    "oxyanion":  "🟠",
-    "wobble":    "🟣",
-    "disulfide": "🟡",
-    "hotspot":   "🔵",
+    "catalytic":   "🔴",
+    "oxyanion":    "🟠",
+    "wobble":      "🟣",
+    "disulfide":   "🟡",
+    "hotspot":     "🔵",
     # ZAR1 NB-ARC categories
-    "p_loop":    "🔴",
-    "walker_b":  "🟠",
-    "glpl":      "🟢",
-    "rnbs":      "🔵",
-    "mhd":       "🟣",
-    "mada":      "🟡",
+    "p_loop":      "🔴",
+    "walker_b":    "🟠",
+    "glpl":        "🟢",
+    "rnbs":        "🔵",
+    "mhd":         "🟣",
+    "mada":        "🟡",
+    # CarRP prenyltransferase categories
+    "psy_dxxxd_1": "🔴",
+    "psy_dxxxd_2": "🟤",
+    "psy_lid":     "🟠",
+    "cyclase":     "🟣",
 }
 
 
@@ -1085,6 +1152,8 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
         "catalytic", "oxyanion", "wobble", "disulfide",
         # ZAR1 NB-ARC (N→C along the domain layout)
         "mada", "p_loop", "walker_b", "glpl", "rnbs", "mhd",
+        # CarRP bifunctional cyclase + prenyltransferase (R domain → P domain)
+        "cyclase", "psy_lid", "psy_dxxxd_1", "psy_dxxxd_2",
         # Engineering hot-spots (last, both teams)
         "hotspot",
     )
