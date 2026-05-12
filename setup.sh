@@ -364,6 +364,9 @@ dependencies:
     - streamlit
     - py3Dmol
     - numpy
+    # plotly drives the MSA conservation chart (hover tooltips with
+    # functional-residue notes are part of the pedagogy)
+    - plotly
 EOF
     $SOLVER_CMD env create -f "$CFOLD_YAML"
     rm -f "$CFOLD_YAML"

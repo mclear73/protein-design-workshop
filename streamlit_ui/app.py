@@ -45,10 +45,69 @@ TARGETS = {
         "organism":   "Ideonella sakaiensis (bacterium)",
         "function":   "Plastic (PET) depolymerase",
         "hotspots":   "A159,A161,A185",
-        # The catalytic triad — three residues that perform the bond-cleaving
-        # chemistry on PET. Conserved across all serine hydrolases.
-        "catalytic_residues": "A160,A206,A237",
-        "catalytic_labels":   {"A160": "Ser160", "A206": "Asp206", "A237": "His237"},
+        # Functional-residue annotations for the MSA inspector. Positions are
+        # PDB resnums on chain A (the same convention the published PETase
+        # literature uses — full-length precursor including signal peptide).
+        # `expected_aa` is checked at render time against the extracted WT
+        # sequence; if no consistent offset makes ALL expectations match, the
+        # markers are skipped and a warning fires. This catches off-by-one
+        # bugs and signal-peptide-included/excluded numbering mix-ups.
+        # See petase_functional_residues.md at the repo root for the full
+        # biological background.
+        "functional_residues": [
+            # Catalytic triad — α/β-hydrolase fold; Ser→Asp→His chemistry
+            {"position": 160, "expected_aa": "S", "label": "Ser160",
+             "category": "catalytic",
+             "note": "Catalytic nucleophile (GxSxG motif)"},
+            {"position": 206, "expected_aa": "D", "label": "Asp206",
+             "category": "catalytic",
+             "note": "Catalytic acid; H-bonds His237"},
+            {"position": 237, "expected_aa": "H", "label": "His237",
+             "category": "catalytic",
+             "note": "Catalytic base; activates Ser160"},
+            # Oxyanion hole (backbone NH stabilises tetrahedral intermediate)
+            {"position": 87,  "expected_aa": "Y", "label": "Tyr87",
+             "category": "oxyanion",
+             "note": "Oxyanion hole (backbone NH); subsite I"},
+            {"position": 161, "expected_aa": "M", "label": "Met161",
+             "category": "oxyanion",
+             "note": "Oxyanion hole (backbone NH)"},
+            # Wobbling tryptophan — three rotamers; IsPETase signature
+            {"position": 185, "expected_aa": "W", "label": "Trp185",
+             "category": "wobble",
+             "note": "Wobbling Trp — three rotamers; IsPETase signature"},
+            # Disulfide 1 — conserved across the PETase/cutinase family
+            {"position": 203, "expected_aa": "C", "label": "Cys203",
+             "category": "disulfide",
+             "note": "Disulfide 1 (C203–C239); conserved across family"},
+            {"position": 239, "expected_aa": "C", "label": "Cys239",
+             "category": "disulfide",
+             "note": "Disulfide 1 (C203–C239); conserved across family"},
+            # Disulfide 2 — IsPETase-specific; critical for thermal stability
+            {"position": 273, "expected_aa": "C", "label": "Cys273",
+             "category": "disulfide",
+             "note": "Disulfide 2 (C273–C289); UNIQUE to IsPETase"},
+            {"position": 289, "expected_aa": "C", "label": "Cys289",
+             "category": "disulfide",
+             "note": "Disulfide 2 (C273–C289); UNIQUE to IsPETase"},
+            # Engineering hot-spots — frequent in thermostable variants
+            # (ThermoPETase, FAST-PETase, DuraPETase, HotPETase)
+            {"position": 121, "expected_aa": "S", "label": "Ser121",
+             "category": "hotspot",
+             "note": "S121E in ThermoPETase / FAST-PETase"},
+            {"position": 186, "expected_aa": "D", "label": "Asp186",
+             "category": "hotspot",
+             "note": "D186H in ThermoPETase / FAST-PETase"},
+            {"position": 214, "expected_aa": "S", "label": "Ser214",
+             "category": "hotspot",
+             "note": "S214H (DuraPETase) / S214Y (HotPETase)"},
+            {"position": 224, "expected_aa": "R", "label": "Arg224",
+             "category": "hotspot",
+             "note": "R224Q in FAST-PETase"},
+            {"position": 280, "expected_aa": "R", "label": "Arg280",
+             "category": "hotspot",
+             "note": "R280A in ThermoPETase / FAST-PETase"},
+        ],
         "blurb": (
             "**The 'easy' case.** Single-domain α/β hydrolase, ~290 aa. "
             "Plenty of training data from related cutinases and esterases. "
@@ -371,6 +430,63 @@ def extract_wt_sequence(pdb_path: str, chain: str) -> str:
 # the MSA are ignored (treated as missing data, not a 21st amino acid).
 _AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
 
+# Functional-residue category colors and human-readable labels for the
+# PETase MSA inspector. Categories follow petase_functional_residues.md:
+#   catalytic  — Ser–Asp–His triad doing the bond-cleaving chemistry
+#   oxyanion   — backbone NHs that stabilise the tetrahedral intermediate
+#   wobble     — the IsPETase signature Trp with three rotamers
+#   disulfide  — the two disulfide bonds (DS1 family-conserved, DS2 unique)
+#   hotspot    — engineering hot-spots from thermostable PETase variants
+# Colors are color-blind-friendly (Wong-style palette) with high contrast
+# against the blue conservation bars and the white plot background.
+_CATEGORY_COLORS = {
+    "catalytic": "#e74c3c",   # red — the canonical triad
+    "oxyanion":  "#f39c12",   # orange
+    "wobble":    "#9b59b6",   # purple
+    "disulfide": "#f1c40f",   # yellow
+    "hotspot":   "#3498db",   # blue (engineering-variant layer)
+}
+_CATEGORY_LABELS = {
+    "catalytic": "Catalytic triad",
+    "oxyanion":  "Oxyanion hole",
+    "wobble":    "Wobbling Trp",
+    "disulfide": "Disulfide bond",
+    "hotspot":   "Engineering hot-spot",
+}
+
+
+def _detect_numbering_offset(reference_seq: str,
+                             residues: list[dict],
+                             search_window: int = 35) -> "int | None":
+    """
+    Find an integer offset `k` such that `reference_seq[r["position"] + k - 1]`
+    equals `r["expected_aa"]` for EVERY annotation in `residues`. Returns the
+    offset (0 if the annotations already line up), or None if no consistent
+    offset exists within [-search_window, +search_window].
+
+    Why: PDB files often number residues from the start of the full-length
+    precursor (signal peptide included). The MSA / WT sequence we extract
+    from the PDB starts at the first resolved ATOM record, which can be
+    well past resnum 1. Without correcting for this, marker positions in
+    the conservation plot land on the wrong column. PETase 6EQE starts at
+    resnum 29, so the offset is -28 — Ser160 (literature) → MSA pos 132.
+
+    Also catches plain off-by-one bugs and mature-vs-precursor mix-ups
+    (offset ±29 for IsPETase). The search window is generous because we
+    don't know a priori which numbering convention an annotation file uses.
+    """
+    n = len(reference_seq)
+    for k in range(-search_window, search_window + 1):
+        ok = True
+        for r in residues:
+            idx = r["position"] + k - 1   # 1-indexed → 0-indexed
+            if idx < 0 or idx >= n or reference_seq[idx] != r["expected_aa"]:
+                ok = False
+                break
+        if ok:
+            return k
+    return None
+
 
 def _find_a3m_path(cache_key: str) -> "Path | None":
     """
@@ -586,6 +702,120 @@ def get_active_range(team: str) -> "tuple[int, int] | None":
     return target.get("range")
 
 
+def _resolve_functional_residues(team: str, wt_seq: str) -> list[dict]:
+    """
+    Normalize a team's functional-residue annotations into a uniform list
+    with positions already converted to MSA / WT-sequence coordinates.
+
+    Returns one dict per annotation:
+        position_msa  — 1-indexed position in the extracted WT sequence (and
+                        therefore in the conservation array). May be out of
+                        range; check `in_range`.
+        display_resnum — the residue number to show in the UI (the original
+                        literature/PDB convention, preserved for users).
+        label         — short label e.g. "Ser160"
+        category      — one of: catalytic, oxyanion, wobble, disulfide,
+                        hotspot, or (legacy) catalytic
+        note          — human-readable description for hover / table caption
+        expected_aa   — single-letter code the literature expects (or "" if
+                        the legacy schema didn't carry one)
+        in_range      — True iff position_msa lies in [1, len(wt_seq)]
+
+    Two annotation schemas are accepted:
+
+    1. Rich (`functional_residues`): a list of dicts with `position` in
+       PDB-resnum convention. We auto-detect the offset between PDB resnums
+       and MSA positions by trying every shift in [-35, +35] and seeing
+       which one makes ALL `expected_aa` values match wt_seq. This catches
+       PDBs that start at resnum != 1 (PETase 6EQE starts at 29 because the
+       signal peptide is included in the precursor numbering) and also
+       guards against off-by-one bugs in the annotation file itself.
+
+    2. Legacy (`catalytic_residues` + `catalytic_labels`): annotations are
+       already in MSA coordinates (after range trimming via get_active_range).
+       Pass through unchanged. Category defaults to "catalytic".
+    """
+    target = TARGETS.get(team, {})
+    n = len(wt_seq)
+
+    if "functional_residues" in target:
+        annotations = target["functional_residues"]
+        # First try to align the whole annotation set. If that fails (typically
+        # because engineering hot-spots are outside the resolved structure),
+        # retry with just the core biological annotations to recover the
+        # offset, then mark the unalignable ones as out-of-range.
+        offset = _detect_numbering_offset(wt_seq, annotations)
+        if offset is None:
+            core = [a for a in annotations
+                    if a.get("category") in
+                    ("catalytic", "disulfide", "oxyanion", "wobble")]
+            offset = _detect_numbering_offset(wt_seq, core) if core else None
+
+        if offset is None:
+            st.error(
+                f"⚠️ Functional-residue annotations for {team} don't match "
+                "the extracted WT sequence at any tested offset. Skipping "
+                "markers to avoid showing wrong information. Check that "
+                "the annotation file matches this PDB's numbering."
+            )
+            return []
+
+        out = []
+        for a in annotations:
+            pos_msa = a["position"] + offset
+            out.append({
+                "position_msa":   pos_msa,
+                "display_resnum": a["position"],   # literature numbering
+                "label":          a["label"],
+                "category":       a.get("category", "catalytic"),
+                "note":           a.get("note", a["label"]),
+                "expected_aa":    a.get("expected_aa", ""),
+                "in_range":       1 <= pos_msa <= n,
+            })
+        return out
+
+    # Legacy path — positions are already in MSA coords (post range trim)
+    catalytic_str = target.get("catalytic_residues", "")
+    if not catalytic_str:
+        return []
+    labels_map = target.get("catalytic_labels", {})
+    rng = get_active_range(team)
+    lo = rng[0] if rng else 1
+
+    out = []
+    for res in catalytic_str.split(","):
+        res = res.strip()
+        if len(res) < 2:
+            continue
+        try:
+            pos_pdb = int(res[1:])
+        except ValueError:
+            continue
+        pos_msa = pos_pdb - (lo - 1) if rng else pos_pdb
+        label = labels_map.get(res, f"{res[0]}{pos_pdb}")
+        out.append({
+            "position_msa":   pos_msa,
+            "display_resnum": pos_pdb,
+            "label":          label,
+            "category":       "catalytic",
+            "note":           label,
+            "expected_aa":    "",
+            "in_range":       1 <= pos_msa <= n,
+        })
+    return out
+
+
+# Emoji circles map to the same colors used in the plotly plot, so the table
+# and the plot read as one coherent visual story without needing inline HTML.
+_CATEGORY_EMOJI = {
+    "catalytic": "🔴",
+    "oxyanion":  "🟠",
+    "wobble":    "🟣",
+    "disulfide": "🟡",
+    "hotspot":   "🔵",
+}
+
+
 def render_msa_inspector(team: str, input_pdb: str) -> None:
     """
     Render the MSA inspection panel: conservation plot + top conserved positions.
@@ -594,7 +824,8 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
     pointing the user at the design step (which builds the MSA as a side effect).
     """
     import msa_cache
-    import matplotlib.pyplot as plt
+    import plotly.graph_objects as go
+    import pandas as pd
 
     target = TARGETS[team]
     chain = target["chain"]
@@ -628,10 +859,10 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
         return
 
     conservation = compute_conservation(sequences)
-
-    # ─── Top-line summary ────────────────────────────────────────────────────
     n_seqs = len(sequences)
     n_residues = len(conservation)
+
+    # ─── Top-line summary ────────────────────────────────────────────────────
     perfectly_conserved = sum(1 for c in conservation if c >= 0.99)
     highly_conserved = sum(1 for c in conservation if c >= 0.90)
 
@@ -659,102 +890,133 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
             "alignment of evolutionary relatives provides the structural prior."
         )
 
-    # ─── Conservation plot ───────────────────────────────────────────────────
+    # ─── Resolve functional-residue annotations once, reuse for plot + table ─
+    func_residues = _resolve_functional_residues(team, wt_seq)
+
+    # ─── Conservation plot (plotly — interactive hover tooltips) ─────────────
     st.markdown("##### Conservation along the sequence")
 
-    fig, ax = plt.subplots(figsize=(11, 2.5))
+    fig = go.Figure()
     positions = list(range(1, n_residues + 1))
-    ax.bar(positions, conservation, width=1.0, color="#4477AA",
-           edgecolor="none", alpha=0.85)
 
-    # Annotate catalytic / functional residues
-    catalytic_resnums: list[int] = []
-    catalytic_str = target.get("catalytic_residues", "")
-    if catalytic_str:
-        for res in catalytic_str.split(","):
-            res = res.strip()
-            try:
-                resnum = int(res[1:])
-                catalytic_resnums.append(resnum)
-            except ValueError:
-                continue
+    # Conservation bars
+    fig.add_trace(go.Bar(
+        x=positions,
+        y=conservation,
+        name="Conservation",
+        marker_color="#4477AA",
+        marker_line_width=0,
+        hovertemplate="Position %{x}<br>Conservation %{y:.1%}"
+                      "<extra></extra>",
+        showlegend=False,
+    ))
 
-    # Apply chain truncation offset if needed. For variant-aware teams (ZAR1),
-    # this resolves to the active variant's range; for others it's just the
-    # static "range" field from TARGETS.
-    rng = get_active_range(team)
-    if rng is not None:
-        lo, hi = rng
-        # Catalytic residues outside the truncation are dropped (they won't
-        # be in this sequence). Inside ones get remapped to 1-indexed coords.
-        adjusted = []
-        for r in catalytic_resnums:
-            if lo <= r <= hi:
-                adjusted.append(r - lo + 1)
-        catalytic_resnums = adjusted
-
-    # Draw markers and labels
-    labels_map = target.get("catalytic_labels", {})
-    for r in catalytic_resnums:
-        if r < 1 or r > n_residues:
+    # Group annotations by category for a clean legend ordering
+    by_category: dict[str, list[dict]] = {}
+    for r in func_residues:
+        if not r["in_range"]:
             continue
-        ax.axvline(r, color="#CC3311", alpha=0.6, lw=1.2, zorder=3)
-        ax.scatter([r], [conservation[r - 1]], color="#CC3311",
-                   s=40, zorder=4, edgecolor="white", lw=0.8)
+        by_category.setdefault(r["category"], []).append(r)
 
-    ax.set_xlabel("Residue position", fontsize=10)
-    ax.set_ylabel("Conservation\n(freq. of most common AA)", fontsize=9)
-    ax.set_xlim(0.5, n_residues + 0.5)
-    ax.set_ylim(0, 1.05)
-    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.grid(axis="y", alpha=0.2, lw=0.5)
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
+    # Preferred display order: biological roles before engineering layer
+    category_order = ("catalytic", "oxyanion", "wobble",
+                      "disulfide", "hotspot")
+    for cat in category_order:
+        items = by_category.get(cat)
+        if not items:
+            continue
+        color = _CATEGORY_COLORS.get(cat, "#CC3311")
+        legend_label = _CATEGORY_LABELS.get(cat, "Functional")
 
-    if catalytic_resnums:
-        st.caption(
-            "🔴 Red markers = known functional residues for this protein. "
-            "If the MSA reflects real biology, these should be among the most "
-            "conserved positions."
+        xs = [r["position_msa"] for r in items]
+        ys = [conservation[r["position_msa"] - 1] for r in items]
+        # The hover text uses the literature residue number (display_resnum)
+        # so workshop participants can match it directly to papers and to
+        # the 3D viewer (which also uses PDB numbering).
+        texts = [
+            f"<b>{r['label']}</b> — {r['note']}<br>"
+            f"PDB residue {r['display_resnum']} · MSA col {r['position_msa']}"
+            for r in items
+        ]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys,
+            mode="markers",
+            marker=dict(size=11, color=color,
+                        line=dict(width=1, color="white")),
+            name=legend_label,
+            text=texts,
+            hovertemplate="%{text}<br>Conservation %{y:.1%}<extra></extra>",
+        ))
+
+        # Faint vertical guide lines so the markers are easy to find on a
+        # 250+ residue x-axis without zooming in
+        for r in items:
+            fig.add_shape(
+                type="line",
+                x0=r["position_msa"], x1=r["position_msa"],
+                y0=0, y1=conservation[r["position_msa"] - 1],
+                line=dict(color=color, width=1, dash="dot"),
+                opacity=0.5,
+                layer="below",
+            )
+
+    fig.update_layout(
+        xaxis_title="Residue position (MSA column)",
+        yaxis_title="Conservation<br>(freq. of most common AA)",
+        yaxis=dict(range=[0, 1.05], tickformat=".0%"),
+        bargap=0.0,
+        height=380,
+        margin=dict(l=70, r=20, t=10, b=50),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1),
+        hovermode="closest",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ─── Caption legend ──────────────────────────────────────────────────────
+    if func_residues:
+        used_cats = {r["category"] for r in func_residues if r["in_range"]}
+        bits = [
+            f"{_CATEGORY_EMOJI.get(cat, '●')} {_CATEGORY_LABELS.get(cat, cat)}"
+            for cat in category_order if cat in used_cats
+        ]
+        caption_bits = []
+        if bits:
+            caption_bits.append("Markers: " + "  ·  ".join(bits) + ".")
+        caption_bits.append(
+            "Hover any marker to see the residue's functional role. "
+            "Catalytic and family-conserved residues should sit at >90% "
+            "conservation if the MSA reflects real biology."
         )
+        st.caption(" ".join(caption_bits))
 
-    # ─── Top conserved positions list ────────────────────────────────────────
+    # ─── Top conserved positions table ──────────────────────────────────────
     st.markdown("##### Most conserved positions")
 
-    # Compute per-position MSA depth (count of non-gap, non-X residues).
-    # We use this to filter out positions with artificially high conservation
-    # caused by shallow homolog coverage — typically at the C-terminus when
-    # most homologs are truncated relative to the query.
+    # Per-position MSA depth (count of non-gap, non-X residues). Used to
+    # filter positions with artificially high conservation from shallow
+    # homolog coverage — typically at the C-terminus.
     depth = [
         sum(1 for s in sequences if s[pos] in _AA_ALPHABET)
         for pos in range(n_residues)
     ]
-    # Median depth across the full sequence sets the "what counts as normal
-    # coverage" threshold. Positions with depth below half of that get
-    # excluded from the top-conserved ranking (their conservation is unreliable).
     sorted_depth = sorted(depth)
     median_depth = sorted_depth[len(sorted_depth) // 2]
-    min_depth = max(median_depth // 2, 2)  # never go below 2 sequences
+    min_depth = max(median_depth // 2, 2)
 
-    # Apply range offset to display the "real" residue numbers, not truncated.
-    # E.g., ZAR1 uses range=(1, 200), so position 1 in our local index maps
-    # to position 1 in the original PDB; CarRP has range=None, so no offset.
-    offset = 0
-    if rng is not None:
-        offset = rng[0] - 1
-
-    chain_letter = target["chain"]
-    catalytic_set = set(catalytic_resnums)
+    # Range offset for displaying "real" residue numbers in the table (used
+    # only by the legacy ZAR1 path — the rich path uses display_resnum from
+    # each annotation directly, which already accounts for the PDB numbering).
+    rng = get_active_range(team)
+    range_offset = (rng[0] - 1) if rng is not None else 0
 
     def is_trivially_conserved(pos_1indexed: int) -> bool:
         """
-        Filter positions that are conserved for boring (non-biological) reasons:
-          - Position 1 is always Met because translation initiates with M-Met.
-            That's not biology, that's the ribosome.
+        Positions that are conserved for non-biological reasons:
+          - Position 1 is always Met (translation initiator) — ribosome
+            mechanics, not selection pressure.
           - Positions with <50% of median MSA depth have shallow homolog
-            coverage; their "conservation" reflects a small sample, not a
-            strong evolutionary constraint.
+            coverage; their "conservation" reflects a small sample.
         """
         if pos_1indexed == 1:
             return True
@@ -762,8 +1024,13 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
             return True
         return False
 
-    # Rank by conservation, excluding trivially-conserved positions but
-    # preserving them for diagnostic display below if you want to look.
+    # Functional residues that ARE in the resolved sequence — keyed by MSA pos
+    func_by_pos: dict[int, dict] = {
+        r["position_msa"]: r for r in func_residues if r["in_range"]
+    }
+    func_missing = [r for r in func_residues if not r["in_range"]]
+
+    # Rank by conservation, excluding trivially-conserved positions
     all_ranked = sorted(
         enumerate(zip(conservation, wt_seq), start=1),
         key=lambda x: -x[1][0],
@@ -772,67 +1039,64 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
         (pos, (cons, aa)) for pos, (cons, aa) in all_ranked
         if not is_trivially_conserved(pos)
     ]
-    top_n = 10
+    # With richer annotations we need fewer "blind" top picks — make room for
+    # the functional residues by trimming the top-N when there are many.
+    top_n = 8 if len(func_by_pos) >= 6 else 10
     top_positions = real_ranked[:top_n]
     top_positions_set = {p for p, _ in top_positions}
 
-    # Always include catalytic residues, even if they're outside the top-N.
-    # They get appended to the table after the top conserved entries.
-    #
-    # Three states for any annotated catalytic residue:
-    #   1. Already in top_positions  → no extra row needed
-    #   2. In the parsed sequence but not in top_positions → append with rank "—"
-    #   3. Outside the parsed sequence (e.g., disordered region missing from
-    #      the PDB, or beyond the truncation range) → note in caption,
-    #      don't try to fake a table row for data we don't have
-    catalytic_extras: list[tuple[int, tuple[float, str]]] = []
-    catalytic_missing: list[int] = []   # state 3: annotated but no data
-    if catalytic_set:
-        for pos in sorted(catalytic_set):
-            if pos in top_positions_set:
-                continue  # already in the main table (state 1)
-            if pos < 1 or pos > n_residues:
-                catalytic_missing.append(pos)  # state 3
-                continue
-            cons = conservation[pos - 1]
-            aa = wt_seq[pos - 1]
-            catalytic_extras.append((pos, (cons, aa)))  # state 2
+    def annotation_text(pos_msa: int) -> str:
+        """Format the Annotation column for a row, or '' if non-functional."""
+        r = func_by_pos.get(pos_msa)
+        if not r:
+            return ""
+        emoji = _CATEGORY_EMOJI.get(r["category"], "●")
+        cat_label = _CATEGORY_LABELS.get(r["category"], r["category"])
+        return f"{emoji} {cat_label} — {r['label']}: {r['note']}"
 
-    # Build the table. Columns:
-    #   Rank      — top-N ranking, or "—" for catalytic positions that didn't
-    #                make the top list
-    #   Position  — numeric residue position (matches figure x-axis directly)
-    #   Residue   — one-letter AA + position (e.g., "S160")
-    #   Conservation — percent
-    #   Note      — catalytic label or empty
-    lines = [
-        "| Rank | Position | Residue | Conservation | Note |",
-        "|---|---|---|---|---|",
+    # Build the table rows. Display "residue number" prefers the annotation's
+    # display_resnum (literature/PDB convention) when available, else falls
+    # back to MSA position + range offset.
+    def display_resnum_for(pos_msa: int) -> int:
+        r = func_by_pos.get(pos_msa)
+        if r is not None:
+            return r["display_resnum"]
+        return pos_msa + range_offset
+
+    rows: list[dict] = []
+
+    # Top conserved positions first
+    for rank, (pos_msa, (cons, aa)) in enumerate(top_positions, start=1):
+        display = display_resnum_for(pos_msa)
+        rows.append({
+            "Rank":         str(rank),
+            "Position":     display,
+            "Residue":      f"{aa}{display}",
+            "Conservation": f"{cons:.1%}",
+            "Annotation":   annotation_text(pos_msa),
+        })
+
+    # Functional residues not in the top-N — append with rank "—"
+    extras_in_range = [
+        (r["position_msa"], r) for r in func_residues
+        if r["in_range"] and r["position_msa"] not in top_positions_set
     ]
+    # Sort by display_resnum so the appended block reads in literature order
+    for pos_msa, r in sorted(extras_in_range, key=lambda x: x[1]["display_resnum"]):
+        cons = conservation[pos_msa - 1]
+        aa = wt_seq[pos_msa - 1]
+        rows.append({
+            "Rank":         "—",
+            "Position":     r["display_resnum"],
+            "Residue":      f"{aa}{r['display_resnum']}",
+            "Conservation": f"{cons:.1%}",
+            "Annotation":   annotation_text(pos_msa),
+        })
 
-    def format_row(rank_label: str, pos_1indexed: int, cons: float, aa: str) -> str:
-        real_resnum = pos_1indexed + offset
-        residue_key = f"{chain_letter}{real_resnum}"
-        label = labels_map.get(residue_key, "")
-        if label:
-            note = f"🔴 {label}"
-        elif pos_1indexed in catalytic_set:
-            note = "🔴 catalytic"
-        else:
-            note = ""
-        return f"| {rank_label} | {real_resnum} | {aa}{real_resnum} | {cons:.1%} | {note} |"
+    df = pd.DataFrame(rows)
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
-    for rank, (pos_1indexed, (cons, aa)) in enumerate(top_positions, start=1):
-        lines.append(format_row(str(rank), pos_1indexed, cons, aa))
-
-    # Catalytic residues that didn't rank in the top — append with "—" rank
-    if catalytic_extras:
-        for pos_1indexed, (cons, aa) in catalytic_extras:
-            lines.append(format_row("—", pos_1indexed, cons, aa))
-
-    st.markdown("\n".join(lines))
-
-    # Diagnostic info about what was filtered, for transparency
+    # ─── Footer caption with diagnostic info ────────────────────────────────
     n_filtered_depth = sum(1 for d in depth if d < min_depth)
     filter_notes = []
     if n_filtered_depth > 0:
@@ -843,22 +1107,28 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
     filter_notes.append(
         "Position 1 (always Met) excluded as a translation artifact"
     )
-    # If any annotated catalytic residues are outside the parsed sequence
-    # (e.g., disordered loops missing from the PDB), call that out explicitly
-    # so participants don't wonder why a labeled residue isn't visible.
-    if catalytic_missing:
-        # Translate back to original residue numbers for display
-        missing_real = [p + offset for p in catalytic_missing]
-        filter_notes.append(
-            f"Catalytic residues outside resolved structure: "
-            f"{', '.join(str(p) for p in missing_real)} "
-            f"(sequence only covers residues {1 + offset}–{n_residues + offset})"
+    if func_missing:
+        # Show literature/PDB numbering so participants can match papers
+        missing_labels = ", ".join(
+            f"{r['label']} (PDB {r['display_resnum']})" for r in func_missing
         )
+        filter_notes.append(
+            f"Functional residues outside the resolved/extracted sequence: "
+            f"{missing_labels}"
+        )
+
+    extra_intro = ""
+    if extras_in_range:
+        extra_intro = (
+            "Functional residues that didn't make the top conserved list "
+            "are appended below with rank '—' so you can see how they "
+            "compare. "
+        )
+
     st.caption(
-        "Positions that never change across hundreds of related proteins are doing "
-        "essential work — either catalysis, folding, or both. "
-        + ("If catalytic residues didn't make the top 10, they're listed below "
-           "with rank '—'. " if catalytic_extras else "")
+        "Positions that never change across hundreds of related proteins are "
+        "doing essential work — catalysis, folding, or both. "
+        + extra_intro
         + " · ".join(filter_notes) + "."
     )
 
