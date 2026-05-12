@@ -114,17 +114,15 @@ TARGETS = {
         # flagged as supporting residues (• marker) but not required.
         "diff_anchor_categories": ["catalytic"],
         "diff_caption": (
-            "PETase is a textbook bacterial hydrolase — ProteinMPNN has seen "
-            "thousands of these and confidently rewrites surface loops while "
-            "leaving the active site untouched. Expect 30–50% sequence change "
-            "with all anchors held. Note: ProteinMPNN runs here with `rm_aa=C`, "
-            "so every cysteine in WT is mutated — the disulfide bonds will not "
-            "form. That's a workshop quirk, not a feature of the design tool."
+            "PETase is a well-trained target — expect ProteinMPNN to change "
+            "30–50% of the amino acids while keeping the active site intact. "
+            "(Note: this workshop's run forbids cysteine substitution, so "
+            "disulfide bonds will not form in the design.)"
         ),
         "blurb": (
-            "**The 'easy' case.** Single-domain α/β hydrolase, ~290 aa. "
-            "Plenty of training data from related cutinases and esterases. "
-            "AI models tend to look good here — this is the well-trained lane."
+            "**The 'easy' case.** A bacterial enzyme that breaks down PET "
+            "plastic. Small, well-studied, lots of relatives in the "
+            "databases — AI tools are usually accurate on proteins like this."
         ),
     },
     "ZAR1": {
@@ -255,18 +253,17 @@ TARGETS = {
         # MADA (disordered in 6J6I), RNBS-B, and hotspots show as • markers.
         "diff_anchor_categories": ["p_loop", "walker_b", "mhd"],
         "diff_caption": (
-            "ZAR1 is an NLR — sparse training data, complex multi-domain fold. "
-            "The P-loop and MHD motifs *must* be preserved for ATPase function. "
-            "Expect more conservative design than PETase (20–35% sequence change "
-            "is typical). Truncated ZAR1 (1-200) only has the P-loop in range; "
-            "extended (1-520) adds Walker B + MHD, including D489 where the "
-            "canonical D489V gain-of-function mutation lives."
+            "ZAR1 is a harder target. Expect more conservative changes "
+            "(20–35%) than PETase. If the run mutates positions near "
+            "130–140 (the ATP-binding loop in this construct), the design "
+            "probably will not work."
         ),
         "blurb": (
-            "**The 'hard' case.** Plant NLRs are large, multidomain, and form "
-            "dynamic oligomeric complexes. Plant proteins are under-represented "
-            "in training data vs. bacterial/human. We truncate to the CC + NB-ARC "
-            "domain (~200 aa) to keep things tractable."
+            "**The 'hard' case.** A plant immune protein that assembles "
+            "into a 5-part ring to trigger cell death. Large, multi-domain, "
+            "and under-represented in training data — AI tools struggle "
+            "here. We use only the front portion (~200 amino acids) to "
+            "keep design tractable."
         ),
     },
     "CarRP": {
@@ -276,7 +273,7 @@ TARGETS = {
         "chain":      "A",
         "range":      None,  # full 614 aa: bifunctional fusion (PSY + LCY domains)
         "organism":   "Mucor circinelloides (fungus)",
-        "function":   "Bifunctional lycopene cyclase + phytoene synthase",
+        "function":   "Bifunctional phytoene synthase + lycopene cyclase",
         "hotspots":   "A45,A80,A150",
         # Functional-residue annotations for the MSA inspector. Positions
         # are full-length AtCarRP UniProt Q9UUQ6 numbering (614 aa), which
@@ -342,17 +339,17 @@ TARGETS = {
         # aromatics (psy_lid) flag as • supporting residues.
         "diff_anchor_categories": ["psy_dxxxd_1", "psy_dxxxd_2", "cyclase"],
         "diff_caption": (
-            "CarRP is bifunctional — *two* active sites in one chain. The "
-            "PSY DXXXD Mg²⁺-binding motifs in the P-domain (positions "
-            "329/333 and 475/479) and the cyclase Glu in the R-domain must "
-            "be preserved. The linker between domains (~residues 250-277) "
-            "is fair game and ProteinMPNN typically rewrites it freely."
+            "CarRP has two active sites in one protein — both must be "
+            "preserved. Watch for changes around positions 329, 333, 475, "
+            "479 (one active site) and the cyclase residue (the other). "
+            "The linker between them is fair game and gets rewritten freely."
         ),
         "blurb": (
-            "**The 'real world' case.** Fungal bifunctional enzyme with no "
-            "experimental structure — we use an AlphaFold Database prediction. "
-            "This is what most industrially-relevant targets actually look like. "
-            "Carotenoids are a ~$1.8B global market."
+            "**The 'real-world' case.** A fungal enzyme that makes "
+            "carotenoid pigments (think β-carotene, lycopene). No "
+            "experimental structure exists, so we start from an AlphaFold "
+            "prediction — this is what most industrial design targets "
+            "actually look like."
         ),
     },
     "GH29": {
@@ -464,28 +461,20 @@ TARGETS = {
         # (which is the lane's main teaching moment about MSA-informed design).
         "diff_anchor_categories": ["nucleophile", "acid_base"],
         "diff_caption": (
-            "TmαFuc is exactly the kind of target ProteinMPNN handles well — "
-            "a well-folded TIM-barrel with extensive structural homologs in "
-            "the PDB. The catalytic dyad D224/E266 is held fixed via the "
-            "▼ markers. The 10 substrate-binding pocket residues (H34, H128, "
-            "H129, W222, etc.) appear as • supporting markers — they are "
-            "**not** explicitly fixed in this workshop's MPNN run, so watch "
-            "whether the model leaves them alone anyway. If it does, that's "
-            "evolutionary signal doing the work; if it doesn't, you've just "
-            "demonstrated why MSA-informed design matters."
+            "TmαFuc folds reliably, so ProteinMPNN handles it well. The "
+            "two catalytic residues (D224, E266, marked ▼) are locked. "
+            "The 10 substrate-binding pocket residues (marked •) are "
+            "**not** locked — watch whether the model leaves them alone "
+            "anyway. If it does, that's evolution doing the work."
         ),
         "blurb": (
-            "**The 'AI-designed' case.** TmαFuc — a GH29 α-L-fucosidase "
-            "from *Thermotoga maritima* — used by the SaBRe project to "
-            "hydrolyse fucose from *Sargassum* fucoidan. The SaBRe team "
-            "applied **ProteinMPNN** (the same tool you'll use today) to "
-            "redesign non-catalytic positions, holding the catalytic dyad "
-            "(D224 / E266) and its substrate-binding pocket fixed. Their "
-            "best variant **GH-M14** gained ~20 °C in Tm and ~5× soluble "
-            "expression over wild-type. Look for the dyad and pocket in "
-            "the conservation plot — the nucleophile is invariant, the "
-            "acid/base varies by subfamily, and the pocket residues "
-            "(3× His + 4× aromatic + 1× Arg) form the −1 subsite."
+            "**The 'AI-designed' case.** An enzyme that cuts sugar off "
+            "seaweed. The **SaBRe** research team recently used "
+            "**ProteinMPNN** (the same tool you're about to use) to "
+            "redesign this protein — their best variant is 20 °C more "
+            "heat-stable and 5× easier to produce than the original. "
+            "Their two active-site residues (D224 and E266) are held "
+            "fixed; everything else is fair game."
         ),
     },
 }
@@ -1296,19 +1285,12 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
     # ─── Why this matters (collapsible) ──────────────────────────────────────
     with st.expander("ℹ️ Why the MSA matters for AlphaFold", expanded=False):
         st.markdown(
-            "AlphaFold doesn't just look at your protein's sequence — it looks at "
-            "**hundreds or thousands of related sequences** from across all of life. "
-            "When two positions consistently mutate together across evolution "
-            "(e.g., a positively charged residue at position X always pairs with "
-            "a negatively charged residue at position Y), that's strong evidence "
-            "those positions are physically close in 3D — a salt bridge.\n\n"
-            "Conservation tells you something different: positions that **never** "
-            "change are usually critical. They're either part of the active site, "
-            "essential for folding, or both. If you redesign a perfectly conserved "
-            "residue, you should not be surprised when the protein stops working.\n\n"
-            "When you validate your designs in the next step, AlphaFold reuses this "
-            "exact MSA — your designed sequence steps into the query slot, and the "
-            "alignment of evolutionary relatives provides the structural prior."
+            "AlphaFold gets accurate by looking at hundreds of related "
+            "proteins from other organisms, not just yours. Positions "
+            "that **never change** across all those relatives are the "
+            "ones doing essential work — usually catalysis or holding "
+            "the fold together. If your design changes one of those, "
+            "expect it to break."
         )
 
     # ─── Resolve functional-residue annotations once, reuse for plot + table ─
@@ -1799,8 +1781,8 @@ def render_sidebar() -> dict:
 
         num_designs = st.slider(
             "Number of designs",
-            min_value=2, max_value=8, value=3, step=1,
-            help="More designs = more diversity to compare, but each adds 2-5 min for AF2 validation.",
+            min_value=2, max_value=8, value=2, step=1,
+            help="More designs = more diversity, but each one adds AlphaFold2 validation time (~2-5 min per design for typical targets).",
         )
         temperature = st.slider(
             "Sampling temperature",
@@ -2138,46 +2120,35 @@ def render_variant_detail(team: str, variant_name: str | None = None) -> None:
     # and binding pockets, hydrophobicity for ligand-binding interpretation.
     if view_style == "cartoon":
         st.caption(
-            "**Gray** = original target backbone.  "
-            "**Colored cartoon** = AlphaFold2 prediction of the designed "
-            "sequence (blue = high confidence, red = low). They should "
-            "superimpose tightly if the design is self-consistent."
+            "Gray = original protein. Colored = AlphaFold2 prediction of "
+            "your design. If they overlay tightly, the design is "
+            "self-consistent."
         )
     elif view_style == "cartoon+surface":
         if surface_color == "plddt":
             st.caption(
-                "**Gray cartoon** = target backbone.  **Colored cartoon "
-                "+ translucent surface** = designed sequence's AF2 "
-                "prediction; both colored by pLDDT (red = low confidence, "
-                "blue = high). The surface shows the shape and bulk of the "
-                "design; the cartoon shows the underlying fold."
+                "Gray = original protein. Colored cartoon + translucent "
+                "surface = your design's AF2 prediction, with both colored "
+                "by confidence (red = low, blue = high)."
             )
         else:
             st.caption(
-                "**Gray cartoon** = target backbone.  **Translucent "
-                "surface** colored by residue chemistry — **yellow** = "
-                "hydrophobic (A, V, L, I, M, F, W, P, G, C), **light blue** "
-                "= polar and charged. Yellow patches mark where ligands "
-                "would bind or where the protein contacts hydrophobic "
-                "partners; blue surfaces face the solvent."
+                "Gray = original protein. Translucent surface on the "
+                "design colored by chemistry: yellow = hydrophobic, "
+                "light blue = polar and charged. Yellow patches mark "
+                "where ligands or other proteins would bind."
             )
     else:  # "surface"
         if surface_color == "plddt":
             st.caption(
-                "**Gray cartoon** = target backbone.  **Solid colored "
-                "surface** = AF2 prediction of the design, colored by "
-                "pLDDT confidence. Red regions are where AF2 was uncertain "
-                "about the predicted position."
+                "Gray = original protein. Solid surface = your design, "
+                "colored by AF2 confidence (red = uncertain, blue = high)."
             )
         else:
             st.caption(
-                "**Gray cartoon** = target backbone.  **Solid surface** "
-                "colored by residue chemistry. **Yellow** patches reveal "
-                "hydrophobic binding pockets and protein-protein interface "
-                "surfaces; **light blue** is solvent-exposed polar/charged "
-                "residues. For ZAR1: look for a yellow patch around the "
-                "Walker A motif (≈positions 132-138 of the truncated "
-                "coordinates) — that's the ATP-binding pocket signature."
+                "Gray = original protein. Solid surface on the design "
+                "colored by chemistry: yellow = hydrophobic, light blue = "
+                "polar and charged. Yellow patches reveal binding pockets."
             )
 
     # ─── Sequence diff vs. WT ────────────────────────────────────────────
@@ -2272,11 +2243,10 @@ def main() -> None:
     with st.expander("🧬 Explore the multiple sequence alignment (optional)",
                      expanded=False):
         st.markdown(
-            "Before AlphaFold predicts a structure, it searches the entire database "
-            "of known protein sequences for relatives of your target. The collection "
-            "of those sequences — the **multiple sequence alignment**, or MSA — is "
-            "the single biggest reason modern structure prediction works as well as "
-            "it does."
+            "AlphaFold looks at hundreds of related proteins, not just "
+            "yours, to predict structure. Below: which positions in your "
+            "protein never change across all those relatives — those are "
+            "usually the critical ones."
         )
         try:
             render_msa_inspector(team, st.session_state.input_pdb)
@@ -2298,10 +2268,11 @@ def main() -> None:
         )
     with col_b:
         st.caption(
-            f"This will generate **{settings['num_designs']}** designs at "
-            f"temperature **{settings['temperature']:.2f}** and validate each "
-            f"with AlphaFold2 (MSA-cached, 3 models). Expect ~10s per design "
-            f"for MPNN + ~2-5 min per design for AF2 depending on target size."
+            f"Will generate **{settings['num_designs']}** designs at "
+            f"temperature **{settings['temperature']:.2f}**, then validate "
+            f"each with AlphaFold2. Expect ~10 seconds per design for "
+            f"ProteinMPNN, then 2–5 minutes per design for AlphaFold2 "
+            f"(depends on protein size)."
         )
 
     if run_design:
@@ -2440,21 +2411,13 @@ def main() -> None:
     st.divider()
     with st.expander("🗣️ Debrief — questions for the room"):
         st.markdown("""
-        1. **What was your team's best pLDDT and RMSD?**
-        2. **Did you notice anything weird?** Low confidence in certain regions, divergent
-           predictions, strange sequence preferences (lots of hydrophobics, prolines, etc.)
-        3. **How does this match what you'd expect from the preamble?**
+        1. **What was your team's best confidence score (pLDDT) and structural agreement (RMSD)?**
+        2. **Anything weird?** Low confidence in certain regions, designs that disagree, strange sequences?
+        3. **Did the result match what you'd expect from the protein's category?**
 
-        **Likely patterns:**
-        - **PETase** usually clean (well-trained data)
-        - **ZAR1** often variable (plant proteins under-represented)
-        - **CarRP** typically most variable (fungal + AF-predicted starting structure)
-        - **GH29** clean fold (thermostable, well-represented family); compare
-          your designs against SaBRe's GH-M14 — did your sequence avoid the
-          catalytic dyad like ProteinMPNN's did?
-
-        That gradient — from biomedical-adjacent to truly industrial to
-        AI-redesigned — is the lesson.
+        PETase tends to design cleanly. ZAR1 and CarRP tend to be variable
+        (less training data). GH29 is the case where the SaBRe team's redesign
+        actually got a 20 °C stability boost — compare your designs to theirs.
         """)
 
 
