@@ -60,34 +60,89 @@ sys.path.insert(0, os.getcwd())
 # We need to import app.py without triggering its Streamlit page setup. The
 # st.set_page_config call at module load is fine — Streamlit lets it no-op
 # when there's no script run context.
+#
+# But app.download_target reads st.session_state.active_variant directly, and
+# that attribute is unavailable outside a real script run — Streamlit raises
+# at access time. We swap in a minimal dict-with-attr-access stand-in BEFORE
+# importing app, so init_state() runs cleanly and download_target finds what
+# it expects.
+import streamlit as st
+
+class _MockSessionState(dict):
+    """Plain dict that also supports attribute access (st.session_state.foo)."""
+    def __getattr__(self, k):
+        try:
+            return self[k]
+        except KeyError as e:
+            raise AttributeError(k) from e
+
+    def __setattr__(self, k, v):
+        self[k] = v
+
+# Replace st.session_state for the duration of this script. The real Streamlit
+# session_state proxy raises outside script runs; this stand-in just stores
+# values like a regular dict.
+st.session_state = _MockSessionState()
+
 import app
 import msa_cache
 
+
+def iter_team_variants(team: str):
+    """
+    Yield (variant_name, range) pairs for each MSA-distinct sequence we need
+    to pre-warm for this team. Teams without variants yield exactly one
+    (None, None) tuple; ZAR1 yields one entry per variant in TARGETS so both
+    truncated and extended sequences get cached entries.
+    """
+    if app.has_variants(team):
+        for variant_name in app.TARGETS[team]["variants"].keys():
+            yield variant_name, app.TARGETS[team]["variants"][variant_name]["range"]
+    else:
+        yield None, app.TARGETS[team].get("range")
+
+
+# app.download_target reads st.session_state.active_variant — we need to set
+# it for each variant we pre-warm so the function generates the right PDB.
+# Streamlit's session_state is a SessionStateProxy that we can poke at with
+# attribute access even outside a script run.
 for team in app.TARGETS.keys():
-    print(f"\n=== {team} ===")
+    for variant_name, _rng in iter_team_variants(team):
+        label = f"{team}/{variant_name}" if variant_name else team
+        print(f"\n=== {label} ===")
 
-    # 1. Download + truncate the target PDB exactly like the app does
-    pdb_path, n_res = app.download_target(team)
-    print(f"  PDB:        {pdb_path}")
-    print(f"  Residues:   {n_res}")
+        # Tell app.download_target which variant to fetch. No-op for teams
+        # without variants (PETase, CarRP).
+        if app.has_variants(team):
+            try:
+                st.session_state.active_variant = variant_name
+            except Exception:
+                # Fallback for stricter session_state implementations: poke
+                # the underlying dict.
+                st.session_state["active_variant"] = variant_name
 
-    # 2. Extract the sequence the same way the app does
-    chain = app.TARGETS[team]["chain"]
-    seq = app.extract_wt_sequence(pdb_path, chain)
-    print(f"  Sequence:   {len(seq)} aa")
+        # 1. Download + chain-filter + range-truncate exactly like the app
+        pdb_path, n_res = app.download_target(team)
+        print(f"  PDB:        {pdb_path}")
+        print(f"  Residues:   {n_res}")
 
-    # 3. Compute the cache key — must match what the app will compute
-    key = msa_cache.cache_key(team, seq)
-    print(f"  Cache key:  {key}")
+        # 2. Extract the sequence the same way the app does
+        chain = app.TARGETS[team]["chain"]
+        seq = app.extract_wt_sequence(pdb_path, chain)
+        print(f"  Sequence:   {len(seq)} aa")
 
-    # 4. Generate or skip
-    if msa_cache.cache_exists(key):
-        print(f"  Status:     already cached, skipping")
-        continue
+        # 3. Compute the cache key — must match what the app will compute
+        key = msa_cache.cache_key(team, seq)
+        print(f"  Cache key:  {key}")
 
-    print(f"  Status:     generating MSA via ColabFold server...")
-    key = msa_cache.generate_msa(team, seq, source="prewarm")
-    print(f"  a3m:        {msa_cache.cache_path(key)}")
+        # 4. Generate or skip
+        if msa_cache.cache_exists(key):
+            print(f"  Status:     already cached, skipping")
+            continue
+
+        print(f"  Status:     generating MSA via ColabFold server...")
+        key = msa_cache.generate_msa(team, seq, source="prewarm")
+        print(f"  a3m:        {msa_cache.cache_path(key)}")
 
 print("\n=== Done ===")
 PYEOF
