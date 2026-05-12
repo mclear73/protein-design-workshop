@@ -108,6 +108,19 @@ TARGETS = {
              "category": "hotspot",
              "note": "R280A in ThermoPETase / FAST-PETase"},
         ],
+        # Categories that MUST be preserved for activity — the sequence diff
+        # view fails its "catalytic anchors held" check if any of these are
+        # mutated in the designed sequence. Oxyanion/wobble/disulfide are
+        # flagged as supporting residues (• marker) but not required.
+        "diff_anchor_categories": ["catalytic"],
+        "diff_caption": (
+            "PETase is a textbook bacterial hydrolase — ProteinMPNN has seen "
+            "thousands of these and confidently rewrites surface loops while "
+            "leaving the active site untouched. Expect 30–50% sequence change "
+            "with all anchors held. Note: ProteinMPNN runs here with `rm_aa=C`, "
+            "so every cysteine in WT is mutated — the disulfide bonds will not "
+            "form. That's a workshop quirk, not a feature of the design tool."
+        ),
         "blurb": (
             "**The 'easy' case.** Single-domain α/β hydrolase, ~290 aa. "
             "Plenty of training data from related cutinases and esterases. "
@@ -237,6 +250,18 @@ TARGETS = {
             "truncated": {"range": (1, 200), "label": "Truncated (1-200)"},
             "extended":  {"range": (1, 520), "label": "Extended (1-520)"},
         },
+        # P-loop / Walker B / MHD residues must survive for the ATPase
+        # switch to work at all; the diff view flags any mutation in these.
+        # MADA (disordered in 6J6I), RNBS-B, and hotspots show as • markers.
+        "diff_anchor_categories": ["p_loop", "walker_b", "mhd"],
+        "diff_caption": (
+            "ZAR1 is an NLR — sparse training data, complex multi-domain fold. "
+            "The P-loop and MHD motifs *must* be preserved for ATPase function. "
+            "Expect more conservative design than PETase (20–35% sequence change "
+            "is typical). Truncated ZAR1 (1-200) only has the P-loop in range; "
+            "extended (1-520) adds Walker B + MHD, including D489 where the "
+            "canonical D489V gain-of-function mutation lives."
+        ),
         "blurb": (
             "**The 'hard' case.** Plant NLRs are large, multidomain, and form "
             "dynamic oligomeric complexes. Plant proteins are under-represented "
@@ -312,6 +337,17 @@ TARGETS = {
              "category": "psy_dxxxd_2",
              "note": "Second DXXXD second aspartate — coordinates Mg²⁺ B"},
         ],
+        # Both DXXXD pairs (the Mg²⁺-binding heart of the prenyltransferase
+        # P-domain) and the cyclase R-domain Glu must survive. The PSY pocket
+        # aromatics (psy_lid) flag as • supporting residues.
+        "diff_anchor_categories": ["psy_dxxxd_1", "psy_dxxxd_2", "cyclase"],
+        "diff_caption": (
+            "CarRP is bifunctional — *two* active sites in one chain. The "
+            "PSY DXXXD Mg²⁺-binding motifs in the P-domain (positions "
+            "329/333 and 475/479) and the cyclase Glu in the R-domain must "
+            "be preserved. The linker between domains (~residues 250-277) "
+            "is fair game and ProteinMPNN typically rewrites it freely."
+        ),
         "blurb": (
             "**The 'real world' case.** Fungal bifunctional enzyme with no "
             "experimental structure — we use an AlphaFold Database prediction. "
@@ -421,6 +457,23 @@ TARGETS = {
              "category": "pocket",
              "note": "Hydrophobic pocket wall"},
         ],
+        # The Koshland dyad (D224 + E266) is the must-preserve set. The 10
+        # pocket residues are pedagogically important but not hard-required
+        # for the diff's "anchors held" check — they show as • markers and
+        # students can see whether ProteinMPNN left them alone on its own
+        # (which is the lane's main teaching moment about MSA-informed design).
+        "diff_anchor_categories": ["nucleophile", "acid_base"],
+        "diff_caption": (
+            "TmαFuc is exactly the kind of target ProteinMPNN handles well — "
+            "a well-folded TIM-barrel with extensive structural homologs in "
+            "the PDB. The catalytic dyad D224/E266 is held fixed via the "
+            "▼ markers. The 10 substrate-binding pocket residues (H34, H128, "
+            "H129, W222, etc.) appear as • supporting markers — they are "
+            "**not** explicitly fixed in this workshop's MPNN run, so watch "
+            "whether the model leaves them alone anyway. If it does, that's "
+            "evolutionary signal doing the work; if it doesn't, you've just "
+            "demonstrated why MSA-informed design matters."
+        ),
         "blurb": (
             "**The 'AI-designed' case.** TmαFuc — a GH29 α-L-fucosidase "
             "from *Thermotoga maritima* — used by the SaBRe project to "
@@ -2127,8 +2180,44 @@ def render_variant_detail(team: str, variant_name: str | None = None) -> None:
                 "coordinates) — that's the ATP-binding pocket signature."
             )
 
-    with st.expander("Show designed sequence"):
-        st.code(chosen["sequence"], language=None)
+    # ─── Sequence diff vs. WT ────────────────────────────────────────────
+    # ProteinMPNN fixbb preserves length and typically rewrites 40-60% of
+    # residues. The structure overlay above answers "did the fold survive?";
+    # the diff below answers "how much sequence did MPNN actually change,
+    # and did it spare the catalytic anchors?". Both are needed to read a
+    # design — fold-similarity alone hides the sequence-redesign story.
+    #
+    # Use the construct sequence the workshop extracted at design time
+    # (the variant-truncated, chain-filtered, gap-compressed sequence in
+    # MSA-column coordinates). This matches what ProteinMPNN was given as
+    # input, so the diff is like-to-like by construction.
+    import sequence_diff
+    wt_seq = extract_wt_sequence(input_pdb, target["chain"])
+    func_residues = _resolve_functional_residues(team, input_pdb, wt_seq)
+
+    try:
+        diff = sequence_diff.compute_diff(wt_seq=wt_seq, designed_seq=chosen["sequence"])
+    except ValueError as e:
+        st.error(f"Sequence diff failed: {e}")
+    else:
+        anchor_categories = target.get("diff_anchor_categories", [])
+        anchor_report = sequence_diff.check_anchors(
+            diff, func_residues, catalytic_categories=anchor_categories,
+        )
+
+        st.markdown("### Sequence diff vs. wild-type")
+        sequence_diff.render_diff_view(
+            diff=diff,
+            anchor_report=anchor_report,
+            anchors=func_residues,
+            catalytic_categories=anchor_categories,
+            category_colors=_CATEGORY_COLORS,
+            lane_caption=target.get("diff_caption", ""),
+            wrap=60,
+        )
+
+    with st.expander("Show designed sequence (FASTA)"):
+        st.code(f">{team}_design{chosen['idx']}\n{chosen['sequence']}", language=None)
 
 
 # =============================================================================

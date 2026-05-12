@@ -91,6 +91,7 @@ gh29_annotations.py
 gh29_functional_residues.md
 gh29_lane_workplan.md
 gh29_lane_step2_pocket_residues.md
+sequence_diff_workplan.md
 
 # Per-instance staging symlinks into ~/rfd-bonus-staging/ (RFdiffusion bonus
 # content). Targets are absolute paths under $HOME, so the symlinks would
