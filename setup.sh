@@ -15,18 +15,27 @@
 #               ColabDesign's single-sequence default).
 #
 # A note on dependencies:
-# - ColabFold 1.6.1 (pinned via COLABFOLD_PIN) installs jax 0.6.2 and
-#   dm-haiku 0.0.16 via its own pyproject.toml. dm-haiku 0.0.16 has been
-#   updated to not depend on the deprecated jax.linear_util submodule, so
-#   this combination works. Earlier ColabFold versions (1.5.5 and below)
-#   shipped with older haiku that crashes on jax 0.4.25+; we used to pin
-#   jax to 0.4.24 to work around that, but bumping ColabFold to 1.6.1
-#   solved it properly.
+# - ColabFold 1.6.1 (pinned via COLABFOLD_PIN) installs jax 0.5.x and
+#   dm-haiku 0.0.16 via its own pyproject.toml. dm-haiku 0.0.16 does NOT
+#   depend on the deprecated jax.linear_util submodule, so this combo
+#   works (older ColabFold versions needed an older jax pin).
 # - ColabDesign is pinned to a specific commit hash (COLABDESIGN_COMMIT)
 #   from a known-working environment. The project doesn't tag releases on
 #   master, so we capture a commit that we've validated end-to-end.
 # - Streamlit + py3Dmol are pip-installed alongside, so the UI can drive
 #   ColabFold directly without env switching.
+#
+# A note on NVIDIA driver requirement:
+# - jax[cuda12] 0.5.x bundles CUDA 12.9 runtime libraries (ptxas, nvcc).
+#   These require an NVIDIA driver of at least CUDA 12.4 (driver branch
+#   550+) to compile XLA graphs on GPU. With a driver still on CUDA 12.2
+#   (driver 535.x), ProteinMPNN's sample() segfaults inside XLA's
+#   backend_compile during JIT — the Streamlit process dies mid-run.
+#   The fix is to update the driver on the instance:
+#       sudo apt-get install -y nvidia-driver-550
+#       sudo reboot
+#   then verify with `nvidia-smi` (CUDA Version should be >= 12.4).
+#   AWS DLAMI images from 2024+ ship with a compatible driver already.
 #
 # The repo also contains two Jupyter notebooks (ProteinMPNN_Workshop_Teams,
 # RFdiffusion_Industrial_Demo). They use a different env (SE3nv) that this
@@ -118,6 +127,40 @@ try:
     print(f"  ✅ jax {jax.__version__}")
 except Exception as e:
     print(f"  ❌ jax: {e}"); ok = False
+
+# Driver/runtime mismatch is the failure mode that crashes the workshop
+# silently mid-MPNN-run. nvidia-smi reports the driver's CUDA support level.
+# jax 0.5.x bundles CUDA 12.9 libraries and needs driver-CUDA >= 12.4.
+try:
+    nvidia_smi = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
+    import re
+    m = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", nvidia_smi.stdout)
+    if m:
+        major, minor = int(m.group(1)), int(m.group(2))
+        if (major, minor) < (12, 4):
+            print(f"  ❌ NVIDIA driver CUDA {major}.{minor} is too old — "
+                  "need >= 12.4 (driver branch 550+) for jax 0.5.x on GPU. "
+                  "Without this, ProteinMPNN sample() segfaults mid-run.")
+            ok = False
+        else:
+            print(f"  ✅ NVIDIA driver CUDA {major}.{minor}")
+    else:
+        print("  ⚠️  Could not parse `nvidia-smi` output")
+except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+    print(f"  ⚠️  nvidia-smi unavailable: {e}")
+
+# DLAMI's system LD_LIBRARY_PATH points at CUDA 12.1 libs that ABI-conflict
+# with jax's bundled CUDA 12.9 libs. The conda activate.d hook should clear
+# it during this check; if LD_LIBRARY_PATH is non-empty here, the hook is
+# missing or didn't run.
+ld_lib = os.environ.get("LD_LIBRARY_PATH", "")
+if ld_lib:
+    print(f"  ❌ LD_LIBRARY_PATH is set inside the env: {ld_lib[:80]}... "
+          "Activate hook missing — MPNN will segfault on GPU. "
+          "Re-run ./setup.sh to reinstall the hook.")
+    ok = False
+else:
+    print("  ✅ LD_LIBRARY_PATH cleared by activate hook")
 
 try:
     import haiku
@@ -312,10 +355,9 @@ dependencies:
   - mmseqs2
   - pip:
     # Letting ColabFold's own pyproject.toml drive jax/jaxlib/dm-haiku
-    # resolution. With colabfold 1.6.1, it picks jax==0.6.2 and
-    # dm-haiku==0.0.16, which work together. We tried pinning jax to older
-    # versions in earlier iterations of this script, but that fought
-    # ColabFold's resolver and produced inconsistent envs.
+    # resolution. With colabfold 1.6.1, it picks jax 0.5.x and
+    # dm-haiku 0.0.16, which work together. Requires NVIDIA driver
+    # CUDA 12.4+ (see header note) — older drivers segfault under XLA.
     - "colabfold[alphafold] @ git+https://github.com/sokrypton/ColabFold@v$COLABFOLD_PIN"
     - "jax[cuda12]"
     - tensorflow_cpu
@@ -331,6 +373,39 @@ fi
 
 conda activate "$ENV_CFOLD"
 echo "✅ Activated: $ENV_CFOLD"
+
+# -----------------------------------------------------------------------------
+# Install conda activate/deactivate hooks to fix the LD_LIBRARY_PATH conflict
+# -----------------------------------------------------------------------------
+# AWS DLAMI sets LD_LIBRARY_PATH=/usr/local/cuda/lib64:... system-wide via
+# /etc/profile.d, pointing at the host's CUDA 12.1 install. But jax 0.5.x
+# bundles CUDA 12.9 libraries (cuBLAS, cuDNN, etc.) under site-packages/nvidia/.
+# At runtime the dynamic linker prefers the system 12.1 libs, causing
+# ABI-mismatch segfaults inside MPNN's GPU kernel execution — the Streamlit
+# process dies mid-design with a stack trace pointing at MeshExecutable.__call__.
+# We clear LD_LIBRARY_PATH on activate (jax finds its libs via Python package
+# paths) and restore it on deactivate so other envs/processes aren't surprised.
+# -----------------------------------------------------------------------------
+HOOK_ACT_DIR="$CONDA_ROOT/envs/$ENV_CFOLD/etc/conda/activate.d"
+HOOK_DEACT_DIR="$CONDA_ROOT/envs/$ENV_CFOLD/etc/conda/deactivate.d"
+mkdir -p "$HOOK_ACT_DIR" "$HOOK_DEACT_DIR"
+cat > "$HOOK_ACT_DIR/zz_unset_ld_library_path.sh" <<'HOOK_EOF'
+#!/bin/bash
+# DLAMI's LD_LIBRARY_PATH points at CUDA 12.1, but jax 0.5.x bundles
+# CUDA 12.9 libs. Clearing it on activate avoids ABI-mismatch segfaults.
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+    export _COLABFOLD_PREV_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+    unset LD_LIBRARY_PATH
+fi
+HOOK_EOF
+cat > "$HOOK_DEACT_DIR/zz_restore_ld_library_path.sh" <<'HOOK_EOF'
+#!/bin/bash
+if [ -n "${_COLABFOLD_PREV_LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="$_COLABFOLD_PREV_LD_LIBRARY_PATH"
+    unset _COLABFOLD_PREV_LD_LIBRARY_PATH
+fi
+HOOK_EOF
+echo "✅ Installed LD_LIBRARY_PATH activate/deactivate hooks"
 
 # -----------------------------------------------------------------------------
 # Install ColabDesign at a specific commit
@@ -396,6 +471,12 @@ cat > "$START_APP" <<EOF
 # Don't commit it to the repo — add 'start_app.sh' to .gitignore instead.
 # Re-run setup.sh to regenerate after changing conda location.
 set -e
+# Clear DLAMI's LD_LIBRARY_PATH: it points at /usr/local/cuda/lib64 (CUDA 12.1
+# system install), which ABI-conflicts with jax 0.5.x's pip-bundled CUDA 12.9
+# libraries. Leaving it set causes segfaults inside MPNN's GPU kernel
+# execution. jax finds its own libs via the Python package paths anyway.
+unset LD_LIBRARY_PATH
+
 source "$CONDA_ROOT/etc/profile.d/conda.sh"
 conda activate $ENV_CFOLD
 cd "$UI_DIR"
