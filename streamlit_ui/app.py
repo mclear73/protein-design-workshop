@@ -123,25 +123,119 @@ TARGETS = {
         "organism":   "Arabidopsis thaliana (plant)",
         "function":   "NLR immune receptor — forms pentameric resistosome",
         "hotspots":   "A14,A17,A24",
-        # ZAR1's Walker A motif (GxxxxGK[S/T]) is the canonical ATP-binding
-        # signature of NB-ARC domains. Empirically (from the MSA conservation
-        # plot), it sits at residues 132-138 in our truncated coordinates:
-        # G132 ... G137 K138 (T139). K138 is the catalytic lysine that
-        # coordinates the ATP β-phosphate.
-        "catalytic_residues": "A132,A137,A138",
-        "catalytic_labels":   {
-            "A132": "Walker A G1",
-            "A137": "Walker A G2",
-            "A138": "Walker A K (ATP)",
-        },
-        # ZAR1-specific feature: variants let advanced participants compare
-        # the truncated (1-200, divergent prediction) vs extended (1-450,
-        # complete NB-ARC) designs side-by-side. The "Try the extended version"
-        # button on the results page swaps in the extended range, runs design+
-        # validation again, and the page then shows both variants in tabs.
+        # Functional-residue annotations for the MSA inspector. Positions
+        # are full-length AtZAR1 UniProt Q38834 numbering (852 aa), which
+        # the PDB 6J6I uses directly for chain C resnums. The MSA inspector
+        # walks the variant-truncated PDB to build a resnum→MSA-column map
+        # — this correctly handles the two gaps in 6J6I chain C resolution
+        # (residues 81-106 and 139-147 are disordered, missing from the
+        # extracted WT sequence).
+        #
+        # Categories follow zar1_functional_residues.md:
+        #   mada     — α1 cell-death helix (residues 17, 21 — DISORDERED
+        #              in 6J6I, so they'll always show as out-of-range)
+        #   p_loop   — Walker A / P-loop (188-196): ATP binding
+        #   walker_b — Walker B / kinase-2 (267, 282, 283): Mg²⁺ + catalysis
+        #   rnbs     — RNBS-B regulatory salt-bridge residue (295, 297)
+        #   mhd      — MHD / IHD motif (487-489); the "death switch".
+        #              D489V is the classic autoactivating gain-of-function
+        #              mutation. Requires extended variant ≥ (1, 520).
+        #   hotspot  — Other characterised residues (P359, H438)
+        #
+        # ZAR1's NB-ARC is an ATPase-like switch — NOT a catalytic triad.
+        # The "catalytic_residues" key is deliberately omitted in favor of
+        # this richer, biologically accurate schema.
+        # Annotation positions are CORRECTED against the SEQRES of 6J6I
+        # chain C (which matches UniProt Q38834). The user-supplied
+        # annotation file had several off-by-N errors that the
+        # _resolve_functional_residues expected_aa check surfaces; we
+        # carry only the positions that actually validate, with notes
+        # updated to match AtZAR1 reality:
+        #   - Walker A glycines: the canonical G's are at PDB resnums
+        #     189 and 194 (not 188 and 193 as the doc claimed — those
+        #     are V and L). The intervening G's at 191-192 are also
+        #     conserved and worth showing for the "glycine zipper" feel.
+        #   - Walker B DD pair: the actual AtZAR1 Walker B is at 267-268
+        #     (DD at SEQRES 267-268: V-M-D-D-V-W-D-K). The doc's
+        #     D282/D283 are actually Q/G in AtZAR1 — that numbering
+        #     belongs to tomato I-2, not AtZAR1.
+        "functional_residues": [
+            # MADA α1 (cell-death membrane funnel) — DISORDERED in 6J6I
+            {"position": 17, "expected_aa": "L", "label": "L17",
+             "category": "mada",
+             "note": "MADA α1 hydrophobic face; L17E abolishes HR cell death"},
+            {"position": 21, "expected_aa": "F", "label": "F21",
+             "category": "mada",
+             "note": "MADA α1 residue; mutation impairs membrane association"},
+            # P-loop / Walker A (GxxxxGKT, NB-ARC residues 189-196)
+            {"position": 189, "expected_aa": "G", "label": "G189",
+             "category": "p_loop",
+             "note": "Walker A G1 — first canonical G of GxxxxGKT motif"},
+            {"position": 191, "expected_aa": "G", "label": "G191",
+             "category": "p_loop",
+             "note": "Walker A interior G — phosphate-binding loop backbone"},
+            {"position": 192, "expected_aa": "G", "label": "G192",
+             "category": "p_loop",
+             "note": "Walker A interior G — phosphate-binding loop backbone"},
+            {"position": 194, "expected_aa": "G", "label": "G194",
+             "category": "p_loop",
+             "note": "Walker A G2 — second canonical G; G194A is loss-of-function"},
+            {"position": 195, "expected_aa": "K", "label": "K195",
+             "category": "p_loop",
+             "note": "Walker A catalytic K — coordinates β/γ-phosphates of "
+                     "ADP/dATP; K195N abolishes resistosome formation"},
+            {"position": 196, "expected_aa": "T", "label": "T196",
+             "category": "p_loop",
+             "note": "Walker A T — coordinates Mg²⁺"},
+            # Walker B / kinase-2 (canonical plant-NLR consensus hhhhDD[V/I]W)
+            # ACTUAL AtZAR1 Walker B is at 267-268 (not 282-283 as the
+            # user-provided doc claimed — that numbering is from tomato I-2,
+            # not AtZAR1; positions 282-283 in AtZAR1 are Q-G).
+            {"position": 267, "expected_aa": "D", "label": "D267",
+             "category": "walker_b",
+             "note": "Walker B first Asp — coordinates Mg²⁺"},
+            {"position": 268, "expected_aa": "D", "label": "D268",
+             "category": "walker_b",
+             "note": "Walker B catalytic Asp — activates water for ATP "
+                     "hydrolysis. D268E is the AtZAR1 equivalent of the "
+                     "autoactivating I-2 D283E mutation (Tameling 2006)"},
+            # RNBS-B regulatory salt bridge
+            {"position": 295, "expected_aa": "T", "label": "T295",
+             "category": "rnbs",
+             "note": "RNBS-B; adjacent to R297 salt-bridge residue"},
+            {"position": 297, "expected_aa": "R", "label": "R297",
+             "category": "rnbs",
+             "note": "Forms R297–D489 salt bridge that stabilises inactive "
+                     "state; broken on activation"},
+            # MHD / IHD motif — needs extended (1, 520+)
+            {"position": 487, "expected_aa": "I", "label": "I487",
+             "category": "mhd",
+             "note": "M-position of canonical MHD; in AtZAR1 it is Ile "
+                     "(motif is IHD, not MHD)"},
+            {"position": 488, "expected_aa": "H", "label": "H488",
+             "category": "mhd",
+             "note": "MHD His — contacts bound nucleotide"},
+            {"position": 489, "expected_aa": "D", "label": "D489",
+             "category": "mhd",
+             "note": "MHD Asp — pivotal autoinhibitory residue. D489V is "
+                     "the classic gain-of-function autoactive mutant"},
+            # Other characterised residues
+            {"position": 359, "expected_aa": "P", "label": "P359",
+             "category": "hotspot",
+             "note": "P359L disrupts nucleotide binding (Wang 2015)"},
+            {"position": 438, "expected_aa": "H", "label": "H438",
+             "category": "hotspot",
+             "note": "H438 deletion strongly impairs ZAR1 activity"},
+        ],
+        # ZAR1 variants let advanced participants compare the deliberately-
+        # too-short truncated case (1-200, only the P-loop is in range) vs.
+        # the extended case (1-520, includes Walker B + RNBS-B + GLPL + MHD
+        # — the full NB-ARC switch machinery). Extended widened from the
+        # previous (1, 450) to (1, 520) so D489 (the canonical D489V
+        # gain-of-function residue) is visible.
         "variants": {
             "truncated": {"range": (1, 200), "label": "Truncated (1-200)"},
-            "extended":  {"range": (1, 450), "label": "Extended (1-450)"},
+            "extended":  {"range": (1, 520), "label": "Extended (1-520)"},
         },
         "blurb": (
             "**The 'hard' case.** Plant NLRs are large, multidomain, and form "
@@ -440,11 +534,19 @@ _AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
 # Colors are color-blind-friendly (Wong-style palette) with high contrast
 # against the blue conservation bars and the white plot background.
 _CATEGORY_COLORS = {
+    # PETase α/β-hydrolase categories
     "catalytic": "#e74c3c",   # red — the canonical triad
-    "oxyanion":  "#f39c12",   # orange
-    "wobble":    "#9b59b6",   # purple
-    "disulfide": "#f1c40f",   # yellow
-    "hotspot":   "#3498db",   # blue (engineering-variant layer)
+    "oxyanion":  "#f39c12",   # orange — backbone-NH oxyanion hole
+    "wobble":    "#9b59b6",   # purple — wobbling Trp
+    "disulfide": "#f1c40f",   # yellow — disulfide cysteines
+    "hotspot":   "#3498db",   # blue — engineering-variant layer
+    # ZAR1 NB-ARC / ATPase-switch categories
+    "p_loop":    "#e74c3c",   # red — P-loop / Walker A (ATP binding)
+    "walker_b":  "#e67e22",   # orange — Walker B / kinase-2 (Mg²⁺)
+    "glpl":      "#16a085",   # teal — GLPL motif (ARC1)
+    "rnbs":      "#3498db",   # blue — RNBS-B regulatory salt bridge
+    "mhd":       "#9b59b6",   # purple — MHD / IHD (the death switch)
+    "mada":      "#f1c40f",   # yellow — MADA α1 cell-death helix
 }
 _CATEGORY_LABELS = {
     "catalytic": "Catalytic triad",
@@ -452,40 +554,67 @@ _CATEGORY_LABELS = {
     "wobble":    "Wobbling Trp",
     "disulfide": "Disulfide bond",
     "hotspot":   "Engineering hot-spot",
+    "p_loop":    "P-loop / Walker A (ATP binding)",
+    "walker_b":  "Walker B / kinase-2 (Mg²⁺)",
+    "glpl":      "GLPL motif (ARC1)",
+    "rnbs":      "RNBS-B regulatory residue",
+    "mhd":       "MHD/IHD motif (autoinhibition)",
+    "mada":      "MADA α1 (membrane funnel)",
 }
 
 
-def _detect_numbering_offset(reference_seq: str,
-                             residues: list[dict],
-                             search_window: int = 35) -> "int | None":
+def _build_resnum_to_msa(input_pdb: str, chain: str) -> dict:
     """
-    Find an integer offset `k` such that `reference_seq[r["position"] + k - 1]`
-    equals `r["expected_aa"]` for EVERY annotation in `residues`. Returns the
-    offset (0 if the annotations already line up), or None if no consistent
-    offset exists within [-search_window, +search_window].
+    Walk a PDB's CA records and return a dict mapping each chain-specific
+    residue number → the 1-indexed position of that residue in the
+    extracted WT sequence (i.e. the conservation array index + 1).
 
-    Why: PDB files often number residues from the start of the full-length
-    precursor (signal peptide included). The MSA / WT sequence we extract
-    from the PDB starts at the first resolved ATOM record, which can be
-    well past resnum 1. Without correcting for this, marker positions in
-    the conservation plot land on the wrong column. PETase 6EQE starts at
-    resnum 29, so the offset is -28 — Ser160 (literature) → MSA pos 132.
+    Why this exists, instead of a single integer offset:
 
-    Also catches plain off-by-one bugs and mature-vs-precursor mix-ups
-    (offset ±29 for IsPETase). The search window is generous because we
-    don't know a priori which numbering convention an annotation file uses.
+    Some PDB chains have gaps in resolution — internal loops that were
+    too disordered to model in the electron density. For PETase 6EQE
+    this almost never happens, but for ZAR1 6J6I chain C there are two
+    gaps (residues 81-106 and 139-147 are unresolved). When the WT
+    sequence is built by concatenating CA atoms in order, MSA col k does
+    NOT line up linearly with PDB resnum k+offset — the relationship is
+    piecewise, with discontinuities at each gap.
+
+    A single-offset search (the previous helper) silently fails on
+    structures with gaps: no value of k aligns every annotation, so
+    every marker is dropped. The mapping built here is the actual
+    ground truth — it preserves gaps and lets us look up each PDB
+    resnum's MSA column directly. Annotations whose resnum is unresolved
+    (in a gap or outside the chain) simply don't appear in the dict and
+    are reported as "outside the resolved structure" downstream.
+
+    Altloc handling matches extract_wt_sequence(): a residue with both
+    altloc 'A' and 'B' is counted once. This keeps the mapping consistent
+    with what the conservation array indexes.
     """
-    n = len(reference_seq)
-    for k in range(-search_window, search_window + 1):
-        ok = True
-        for r in residues:
-            idx = r["position"] + k - 1   # 1-indexed → 0-indexed
-            if idx < 0 or idx >= n or reference_seq[idx] != r["expected_aa"]:
-                ok = False
-                break
-        if ok:
-            return k
-    return None
+    mapping: dict = {}
+    seen_resnums: set = set()
+    msa_col = 0
+    with open(input_pdb) as f:
+        for line in f:
+            if not line.startswith("ATOM"):
+                continue
+            if line[21] != chain:
+                continue
+            if line[12:16].strip() != "CA":
+                continue
+            altloc = line[16]
+            if altloc not in (" ", "A"):
+                continue
+            try:
+                resnum = int(line[22:26])
+            except ValueError:
+                continue
+            if resnum in seen_resnums:
+                continue
+            seen_resnums.add(resnum)
+            msa_col += 1
+            mapping[resnum] = msa_col
+    return mapping
 
 
 def _find_a3m_path(cache_key: str) -> "Path | None":
@@ -702,79 +831,98 @@ def get_active_range(team: str) -> "tuple[int, int] | None":
     return target.get("range")
 
 
-def _resolve_functional_residues(team: str, wt_seq: str) -> list[dict]:
+def _resolve_functional_residues(team: str, input_pdb: str,
+                                  wt_seq: str) -> list[dict]:
     """
     Normalize a team's functional-residue annotations into a uniform list
     with positions already converted to MSA / WT-sequence coordinates.
 
     Returns one dict per annotation:
         position_msa  — 1-indexed position in the extracted WT sequence (and
-                        therefore in the conservation array). May be out of
-                        range; check `in_range`.
+                        therefore in the conservation array). -1 when the
+                        annotation is unresolved (gap or outside the chain);
+                        check `in_range`.
         display_resnum — the residue number to show in the UI (the original
                         literature/PDB convention, preserved for users).
         label         — short label e.g. "Ser160"
         category      — one of: catalytic, oxyanion, wobble, disulfide,
-                        hotspot, or (legacy) catalytic
+                        hotspot (PETase) or p_loop, walker_b, glpl, rnbs,
+                        mhd, mada, hotspot (ZAR1) — controls plot color.
         note          — human-readable description for hover / table caption
         expected_aa   — single-letter code the literature expects (or "" if
                         the legacy schema didn't carry one)
-        in_range      — True iff position_msa lies in [1, len(wt_seq)]
+        in_range      — True iff the annotation's residue exists in the
+                        resolved structure (lookup hit AND expected_aa
+                        validates against the WT sequence at that position)
 
     Two annotation schemas are accepted:
 
-    1. Rich (`functional_residues`): a list of dicts with `position` in
-       PDB-resnum convention. We auto-detect the offset between PDB resnums
-       and MSA positions by trying every shift in [-35, +35] and seeing
-       which one makes ALL `expected_aa` values match wt_seq. This catches
-       PDBs that start at resnum != 1 (PETase 6EQE starts at 29 because the
-       signal peptide is included in the precursor numbering) and also
-       guards against off-by-one bugs in the annotation file itself.
+    1. Rich (`functional_residues`): a list of dicts with `position` in the
+       PDB's resnum convention. We build a PDB-resnum→MSA-column map by
+       walking the input PDB's CA records and look up each annotation
+       directly. Handles gaps in resolution correctly — when an annotated
+       residue isn't in the resolved structure (e.g. ZAR1 MADA L17/F21 in
+       6J6I, where the N-terminus is disordered), the annotation is marked
+       out-of-range rather than silently mis-plotted. Also catches
+       annotation-file bugs: if the resnum maps to a column but the AA
+       there doesn't match the expected_aa, it's flagged.
 
     2. Legacy (`catalytic_residues` + `catalytic_labels`): annotations are
-       already in MSA coordinates (after range trimming via get_active_range).
-       Pass through unchanged. Category defaults to "catalytic".
+       already in MSA coordinates (after range trimming via
+       get_active_range). Pass through unchanged. Category defaults to
+       "catalytic". Used by CarRP only.
     """
     target = TARGETS.get(team, {})
     n = len(wt_seq)
 
     if "functional_residues" in target:
+        chain = target["chain"]
+        resnum_to_msa = _build_resnum_to_msa(input_pdb, chain)
         annotations = target["functional_residues"]
-        # First try to align the whole annotation set. If that fails (typically
-        # because engineering hot-spots are outside the resolved structure),
-        # retry with just the core biological annotations to recover the
-        # offset, then mark the unalignable ones as out-of-range.
-        offset = _detect_numbering_offset(wt_seq, annotations)
-        if offset is None:
-            core = [a for a in annotations
-                    if a.get("category") in
-                    ("catalytic", "disulfide", "oxyanion", "wobble")]
-            offset = _detect_numbering_offset(wt_seq, core) if core else None
 
-        if offset is None:
-            st.error(
-                f"⚠️ Functional-residue annotations for {team} don't match "
-                "the extracted WT sequence at any tested offset. Skipping "
-                "markers to avoid showing wrong information. Check that "
-                "the annotation file matches this PDB's numbering."
-            )
-            return []
-
+        mismatches: list[str] = []   # annotations with bad expected_aa
         out = []
         for a in annotations:
-            pos_msa = a["position"] + offset
+            pos_pdb = a["position"]
+            pos_msa = resnum_to_msa.get(pos_pdb)
+            in_range = pos_msa is not None and 1 <= pos_msa <= n
+
+            # Validate expected_aa against the WT sequence. A mismatch
+            # means the annotation file has the wrong amino acid for this
+            # position (or the PDB uses a different numbering convention
+            # than the annotation file assumes). Either way, refusing to
+            # plot is safer than plotting wrong info.
+            if in_range:
+                expected = a.get("expected_aa", "")
+                actual = wt_seq[pos_msa - 1]
+                if expected and actual != expected:
+                    mismatches.append(
+                        f"{a['label']}: expected {expected} at PDB {pos_pdb}, "
+                        f"PDB has {actual}"
+                    )
+                    in_range = False
+
             out.append({
-                "position_msa":   pos_msa,
-                "display_resnum": a["position"],   # literature numbering
+                "position_msa":   pos_msa if in_range else -1,
+                "display_resnum": pos_pdb,
                 "label":          a["label"],
                 "category":       a.get("category", "catalytic"),
                 "note":           a.get("note", a["label"]),
                 "expected_aa":    a.get("expected_aa", ""),
-                "in_range":       1 <= pos_msa <= n,
+                "in_range":       in_range,
             })
+
+        if mismatches:
+            st.warning(
+                "⚠️ Some functional-residue annotations don't match the PDB. "
+                "These are skipped:\n\n" +
+                "\n".join(f"- {m}" for m in mismatches)
+            )
         return out
 
-    # Legacy path — positions are already in MSA coords (post range trim)
+    # Legacy path — positions are already in MSA coords (post range trim).
+    # Retained for teams (CarRP) that haven't been migrated to the rich
+    # schema. PETase and ZAR1 both use functional_residues above.
     catalytic_str = target.get("catalytic_residues", "")
     if not catalytic_str:
         return []
@@ -808,11 +956,19 @@ def _resolve_functional_residues(team: str, wt_seq: str) -> list[dict]:
 # Emoji circles map to the same colors used in the plotly plot, so the table
 # and the plot read as one coherent visual story without needing inline HTML.
 _CATEGORY_EMOJI = {
+    # PETase categories
     "catalytic": "🔴",
     "oxyanion":  "🟠",
     "wobble":    "🟣",
     "disulfide": "🟡",
     "hotspot":   "🔵",
+    # ZAR1 NB-ARC categories
+    "p_loop":    "🔴",
+    "walker_b":  "🟠",
+    "glpl":      "🟢",
+    "rnbs":      "🔵",
+    "mhd":       "🟣",
+    "mada":      "🟡",
 }
 
 
@@ -891,7 +1047,7 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
         )
 
     # ─── Resolve functional-residue annotations once, reuse for plot + table ─
-    func_residues = _resolve_functional_residues(team, wt_seq)
+    func_residues = _resolve_functional_residues(team, input_pdb, wt_seq)
 
     # ─── Conservation plot (plotly — interactive hover tooltips) ─────────────
     st.markdown("##### Conservation along the sequence")
@@ -918,9 +1074,20 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
             continue
         by_category.setdefault(r["category"], []).append(r)
 
-    # Preferred display order: biological roles before engineering layer
-    category_order = ("catalytic", "oxyanion", "wobble",
-                      "disulfide", "hotspot")
+    # Preferred display order: biological role categories first, then the
+    # engineering-variant layer. Covers both annotation schemas — PETase
+    # categories (catalytic/oxyanion/wobble/disulfide) and ZAR1 NB-ARC
+    # categories (mada/p_loop/walker_b/glpl/rnbs/mhd) — in natural reading
+    # order along the protein sequence. `by_category` is keyed by category
+    # name, so categories that don't apply to this team just silently skip.
+    category_order = (
+        # PETase α/β-hydrolase
+        "catalytic", "oxyanion", "wobble", "disulfide",
+        # ZAR1 NB-ARC (N→C along the domain layout)
+        "mada", "p_loop", "walker_b", "glpl", "rnbs", "mhd",
+        # Engineering hot-spots (last, both teams)
+        "hotspot",
+    )
     for cat in category_order:
         items = by_category.get(cat)
         if not items:
@@ -1604,9 +1771,11 @@ def render_variant_detail(team: str, variant_name: str | None = None) -> None:
                 "coiled-coil bundle aligns reasonably, but the rest of the predicted fold "
                 "diverges from the WT — and that's expected for ZAR1.\n\n"
                 "Three things stack against the workflow here:\n\n"
-                "1. **You truncated a multi-domain protein.** Residues 1–200 cuts the NB-ARC "
-                "domain in half. NB-ARC needs the *full* domain (~1–450) to fold; ProteinMPNN "
-                "was asked to design a sequence for a half-fold that doesn't exist in nature.\n\n"
+                "1. **You truncated a multi-domain protein.** Residues 1–200 only reach the "
+                "start of the NB-ARC domain — the P-loop is in, but Walker B, GLPL, RNBS-B, "
+                "and the MHD 'death switch' (incl. D489, the canonical D489V autoactivation "
+                "residue) are all outside the window. ProteinMPNN was asked to design a "
+                "sequence for a half-fold that doesn't exist in nature.\n\n"
                 "2. **Plant NLRs are scarce in AF2's training data.** AF2's training was "
                 "dominated by bacterial/human/yeast structures. Plant immune receptors are "
                 "underrepresented, and pLDDT/pTM reflect that uncertainty (compare ZAR1's "
@@ -1616,7 +1785,9 @@ def render_variant_detail(team: str, variant_name: str | None = None) -> None:
                 "into what should be a buried protein-protein interface — destabilizing the fold.\n\n"
                 "**The takeaway for the workshop:** the workflow doesn't fail silently. pLDDT, "
                 "pTM, and RMSD all flag the problem. A 'divergent' verdict on a hard target is "
-                "a valid scientific result."
+                "a valid scientific result. NB-ARC is an ATPase-like switch domain, not a "
+                "catalytic triad — see the MSA inspector legend above for the actual functional "
+                "residues (P-loop, Walker B, MHD)."
             )
         else:
             st.info(
@@ -1921,21 +2092,22 @@ def main() -> None:
             st.markdown("---")
             with st.container():
                 st.markdown(
-                    "##### 🔬 Try the extended version (1–450)"
+                    "##### 🔬 Try the extended version (1–520)"
                 )
                 st.markdown(
-                    "You ran ZAR1 on the **truncated CC domain (1–200)** "
-                    "and saw the prediction diverge. "
-                    "**Now try the same workflow on the extended CC + NB-ARC "
-                    "tandem (1–450).** Does pLDDT come up? Does the central "
-                    "bundle stay aligned while the new C-terminal residues "
-                    "form the missing nucleotide-binding pocket? This is the "
-                    "obvious follow-up — a real hypothesis test about *why* "
+                    "You ran ZAR1 on the **truncated CC + start-of-NB-ARC (1–200)** "
+                    "and saw the prediction diverge — only the P-loop made it into "
+                    "the window. **Now try the same workflow on the extended CC + "
+                    "full NB-ARC (1–520).** This adds the Walker B, GLPL, RNBS-B, "
+                    "and MHD motifs (including **D489**, the classic D489V autoactivating "
+                    "residue) to the construct. Does pLDDT come up? Does the central "
+                    "bundle stay aligned while the new C-terminal residues form the "
+                    "missing ATP-binding switch? A real hypothesis test about *why* "
                     "the truncated case failed."
                 )
                 st.warning(
                     "**Heads-up: this will take ~3-5× longer than the truncated run.** "
-                    "Extended is 2.25× the residues; AF2's runtime scales worse than "
+                    "Extended is ~2.6× the residues; AF2's runtime scales worse than "
                     f"linearly with length. Expect ~{settings['num_designs'] * 5}–"
                     f"{settings['num_designs'] * 10} min for {settings['num_designs']} "
                     "designs. ProteinMPNN itself is still fast. You'll also wait for "
