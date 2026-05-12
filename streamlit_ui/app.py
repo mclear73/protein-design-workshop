@@ -345,11 +345,27 @@ TARGETS = {
         # TODO(sabre-data): integrate GH-M14 mutation list when SaBRe
         # releases the manuscript.
         #
-        # Pocket residues from TfFuc1 (Cao 2024: H49/W61/E60/H108/H109/Y152)
-        # do NOT map 1:1 to TmαFuc — none of those 6 positions has the
-        # expected AA. Including them would mislabel structural alignment.
-        # Skipped from v1; would need structural superposition to identify
-        # the TmαFuc equivalents.
+        # Pocket residues are from the TmαFuc-specific list compiled by
+        # Robles-Arias et al. 2025 (MD simulation paper on TmαFuc, J. Biomol.
+        # Struct. Dyn.) citing Sulzenbacher et al. 2004 (PDB 1HL8, the
+        # original TmαFuc crystal structure paper). All 10 positions have
+        # been validated against the AF-Q9WYE2 PDB (expected_aa matches) and
+        # the cached 14,257-sequence MSA. These are structurally implicated
+        # in fucose binding via the crystal structure; only D224 and E266
+        # have been mutagenically validated in TmαFuc directly. Several
+        # have been mutated in homologs (e.g. H34/H128/H129 equivalents in
+        # SsαFuc — Cobucci-Ponzano et al. 2008), which is what makes them
+        # workshop-defensible at MEDIUM-confidence.
+        #
+        # NOT in this list:
+        # - W23 (97.9% conserved peak in the plot): adjacent to F32 but not
+        #   in the published TmαFuc pocket residue compilation. Likely
+        #   structural/scaffold; leave unannotated until published evidence
+        #   surfaces a role.
+        # - G30/G36/G118/G331 (top-10 conserved): TIM-barrel scaffold
+        #   glycines, conserved for folding reasons, not active-site.
+        #   Including them as "pocket" would dilute the visual signal of
+        #   which residues actually touch the substrate.
         "functional_residues": [
             # Catalytic dyad — Koshland double-displacement, retaining
             {"position": 224, "expected_aa": "D", "label": "D224",
@@ -368,6 +384,42 @@ TARGETS = {
                      "different position. Expect noticeably lower MSA "
                      "conservation than the nucleophile — that's the "
                      "subfamily-A-vs-B split, not a bug."},
+            # Substrate-binding pocket — fucose recognition residues lining
+            # the −1 subsite. Together with the dyad these 12 residues form
+            # the entire active site that ProteinMPNN must preserve to
+            # retain activity. (Sulzenbacher 2004 PDB 1HL8; compiled by
+            # Robles-Arias 2025 MD study.) In position order:
+            {"position": 32, "expected_aa": "F", "label": "F32",
+             "category": "pocket",
+             "note": "Hydrophobic pocket wall housing the fucose ring"},
+            {"position": 34, "expected_aa": "H", "label": "H34",
+             "category": "pocket",
+             "note": "Fucose hydroxyl H-bond donor"},
+            {"position": 66, "expected_aa": "E", "label": "E66",
+             "category": "pocket",
+             "note": "Fucose H-bond donor (acidic pocket residue)"},
+            {"position": 67, "expected_aa": "W", "label": "W67",
+             "category": "pocket",
+             "note": "C5-methyl CH-π stacking — fucose-specific recognition"},
+            {"position": 128, "expected_aa": "H", "label": "H128",
+             "category": "pocket",
+             "note": "Fucose hydroxyl H-bond donor"},
+            {"position": 129, "expected_aa": "H", "label": "H129",
+             "category": "pocket",
+             "note": "Fucose hydroxyl H-bond donor"},
+            {"position": 171, "expected_aa": "Y", "label": "Y171",
+             "category": "pocket",
+             "note": "Pocket wall — fucose ring contact"},
+            {"position": 222, "expected_aa": "W", "label": "W222",
+             "category": "pocket",
+             "note": "Nucleophile-adjacent (WND motif flanking D224)"},
+            {"position": 254, "expected_aa": "R", "label": "R254",
+             "category": "pocket",
+             "note": "Salt-bridges with the catalytic dyad — positions D224 "
+                     "and E266 relative to the bound substrate"},
+            {"position": 290, "expected_aa": "F", "label": "F290",
+             "category": "pocket",
+             "note": "Hydrophobic pocket wall"},
         ],
         "blurb": (
             "**The 'AI-designed' case.** TmαFuc — a GH29 α-L-fucosidase "
@@ -375,10 +427,12 @@ TARGETS = {
             "hydrolyse fucose from *Sargassum* fucoidan. The SaBRe team "
             "applied **ProteinMPNN** (the same tool you'll use today) to "
             "redesign non-catalytic positions, holding the catalytic dyad "
-            "(D224 / E266) fixed. Their best variant **GH-M14** gained "
-            "~20 °C in Tm and ~5× soluble expression over wild-type. "
-            "Look for the dyad in the conservation plot — the nucleophile "
-            "is invariant; the acid/base varies by subfamily."
+            "(D224 / E266) and its substrate-binding pocket fixed. Their "
+            "best variant **GH-M14** gained ~20 °C in Tm and ~5× soluble "
+            "expression over wild-type. Look for the dyad and pocket in "
+            "the conservation plot — the nucleophile is invariant, the "
+            "acid/base varies by subfamily, and the pocket residues "
+            "(3× His + 4× aromatic + 1× Arg) form the −1 subsite."
         ),
     },
 }
@@ -1114,6 +1168,21 @@ _CATEGORY_EMOJI = {
     "mpnn_redesigned": "🟢",
 }
 
+# Per-category marker size for the plotly scatter overlays on the
+# conservation plot. The default (used for every category not listed here)
+# is 11 — matching the existing behavior for PETase, ZAR1, and CarRP.
+# GH29 deliberately differentiates: the catalytic dyad markers are larger
+# than the pocket markers so the dyad stays the visual anchor and the
+# pocket residues read as "the supporting cast that ProteinMPNN also had
+# to preserve." Without this asymmetry the eye can't pick the dyad out
+# from 12 markers along a 449-residue x-axis.
+_CATEGORY_MARKER_SIZE = {
+    "nucleophile": 14,
+    "acid_base":   14,
+    "pocket":      9,
+}
+_DEFAULT_MARKER_SIZE = 11
+
 
 def render_msa_inspector(team: str, input_pdb: str) -> None:
     """
@@ -1252,10 +1321,11 @@ def render_msa_inspector(team: str, input_pdb: str) -> None:
             f"PDB residue {r['display_resnum']} · MSA col {r['position_msa']}"
             for r in items
         ]
+        marker_size = _CATEGORY_MARKER_SIZE.get(cat, _DEFAULT_MARKER_SIZE)
         fig.add_trace(go.Scatter(
             x=xs, y=ys,
             mode="markers",
-            marker=dict(size=11, color=color,
+            marker=dict(size=marker_size, color=color,
                         line=dict(width=1, color="white")),
             name=legend_label,
             text=texts,
